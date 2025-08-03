@@ -71,7 +71,7 @@ runs:
             if [[ "${tags}" == "" ]]; then
               needs_commit=true
               stop_workflow=true
-              release_version="$(date '+%y.%-m.').0"
+              release_version="$(date '+%y.%-m.0')"
             fi
 
             for tag in "${tags[@]}"; do
