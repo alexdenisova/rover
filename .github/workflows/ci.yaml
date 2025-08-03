@@ -53,7 +53,7 @@ jobs:
         id: cached-poetry-dependencies
         uses: actions/cache@v4
         with:
-          path: .venv
+          path: ${{ env.WORKING_DIR }}/.venv
           key: venv-${{ github.repository }}
       - name: Install dependencies
         run: poetry install --no-interaction --no-root
@@ -66,7 +66,7 @@ jobs:
         uses: actions/upload-artifact@master
         with:
           name: build
-          path: dist
+          path: ${{ env.WORKING_DIR }}/dist
   create-tag:
     runs-on: ubuntu-22.04
     needs:
@@ -126,7 +126,7 @@ jobs:
         uses: actions/upload-artifact@master
         with:
           name: image-tag
-          path: "${{ github.event.repository.name }}.values.yaml"
+          path: "${{ env.WORKING_DIR }}/${{ github.event.repository.name }}.values.yaml"
   # push-values:
   #   runs-on: ubuntu-22.04
   #   needs:

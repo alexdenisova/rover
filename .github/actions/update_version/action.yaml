@@ -50,8 +50,6 @@ runs:
       id: compute
       working-directory: ${{ inputs.path }}
       run: |-
-        echo ${{ inputs.path }}
-        pwd
         current="$(poetry version | awk '{print $NF}')"
         release_version="$current"
         needs_commit=false
