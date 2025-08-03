@@ -57,6 +57,18 @@ class WhisperHandler(BaseHTTPRequestHandler):
                 self.wfile.write(
                     f"Error during transcription: {str(e)}".encode("utf-8")
                 )
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_GET(self):
+        if self.path == "/health":
+            self.send_response(200)
+            self.end_headers()
+        else:
+            self.send_response(404)
+            self.end_headers()
+            return
 
 
 def run(server_class=HTTPServer, handler_class=WhisperHandler, port=8000):

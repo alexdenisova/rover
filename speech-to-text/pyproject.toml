@@ -4,13 +4,20 @@ version = "25.8.0"
 description = ""
 authors = ["Alex Denisova <alexadenisova@gmail.com>"]
 readme = "README.md"
-packages = [{include = "speech_to_text", from = "src"}]
+packages = [{ include = "speech_to_text", from = "src" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
 openai-whisper = "^20250625"
 numpy = "2.1.0"
 
+[tool.poetry.group.dev.dependencies]
+bandit = "^1.8.6"
+rich = "^13.5.2"
+black = "^22.1.0"
+isort = "^5.10.1"
+pylint = "^2.12.2"
+pylint-gitlab = "^1.0.0"
 
 [build-system]
 requires = ["poetry-core"]
