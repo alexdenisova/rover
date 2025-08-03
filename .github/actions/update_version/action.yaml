@@ -69,9 +69,11 @@ runs:
               | jq -r 'if type=="array" then .[] | .ref | sub("^refs/tags/"; "") else "" end'))
 
             if [[ "${tags}" == "" ]]; then
-              needs_commit=true
-              stop_workflow=true
               release_version="$(date '+%y.%-m.0')"
+              if [[ "${release_version}" != "${current}" ]]; then
+                needs_commit=true
+                stop_workflow=true
+              fi
             fi
 
             for tag in "${tags[@]}"; do
