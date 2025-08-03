@@ -13,7 +13,7 @@ env:
 jobs:
   update-version:
     runs-on: ubuntu-22.04
-    if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/')
+    if: github.event_name != 'pull_request' && github.ref_type != 'tag'
     outputs:
       stop_workflow: ${{ steps.update_version.outputs.stop_workflow }}
       release_version: ${{ steps.update_version.outputs.release_version }}
@@ -71,8 +71,7 @@ jobs:
     needs:
       - update-version
       - build
-    if: >-
-      startsWith(github.ref, 'refs/tags/') != true
+    if: github.ref_type != 'tag'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,8 +83,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs:
       - build
-    if: >-
-      startsWith(github.ref, 'refs/tags/')
+    if: github.ref_type == 'tag'
     defaults:
       run:
         working-directory: ${{ env.WORKING_DIR }}
@@ -127,8 +125,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs:
       - publish-image
-    if: >-
-      startsWith(github.ref, 'refs/tags/')
+    if: github.ref_type == 'tag'
     env:
       VALUES_DIR: "values/speech-to-text"
     steps:
