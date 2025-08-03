@@ -61,6 +61,7 @@ runs:
           if [[ "${{ steps.filter.outputs.publish }}" != "true" ]]; then
             stop_workflow=true
           else
+            echo ${{ inputs.repo }}
             curl -sL -X 'GET' \
               -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer ${{ inputs.token }}" \
