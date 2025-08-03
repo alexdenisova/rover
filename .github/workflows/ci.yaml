@@ -72,8 +72,7 @@ jobs:
       - update-version
       - build
     if: >-
-      needs.update-version.outputs.stop_workflow != 'true'
-      && startsWith(github.ref, 'refs/tags/') != true
+      startsWith(github.ref, 'refs/tags/') != true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,11 +83,9 @@ jobs:
   publish-image:
     runs-on: ubuntu-22.04
     needs:
-      - update-version
       - build
     if: >-
-      needs.update-version.outputs.stop_workflow != 'true'
-      && startsWith(github.ref, 'refs/tags/')
+      startsWith(github.ref, 'refs/tags/')
     defaults:
       run:
         working-directory: ${{ env.WORKING_DIR }}
@@ -113,7 +110,7 @@ jobs:
         run: ls && ls dist && docker build -t ${{ github.event.repository.name }} --build-arg PYTHON_MODULE=speech_to_text .
       - name: Publish Package
         run: |-
-          TAG="${{ needs.update-version.outputs.release_version }}"
+          TAG="${GITHUB_REF_NAME#refs/tags/}"
           docker tag ${{ github.event.repository.name }} ${REGISTRY}/${GITHUB_REPOSITORY}:${TAG}
           docker push ${REGISTRY}/${GITHUB_REPOSITORY}:${TAG}
 
@@ -129,11 +126,9 @@ jobs:
   push-values:
     runs-on: ubuntu-22.04
     needs:
-      - update-version
       - publish-image
     if: >-
-      needs.update-version.outputs.stop_workflow != 'true'
-      && startsWith(github.ref, 'refs/tags/')
+      startsWith(github.ref, 'refs/tags/')
     env:
       VALUES_DIR: "values/speech-to-text"
     steps:
