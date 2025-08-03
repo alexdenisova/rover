@@ -83,7 +83,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs:
       - build
-    if: github.ref_type == 'tag'
+    # if: github.ref_type == 'tag'
     defaults:
       run:
         working-directory: ${{ env.WORKING_DIR }}
