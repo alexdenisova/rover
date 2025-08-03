@@ -38,6 +38,7 @@ runs:
             - 'pyproject.toml'
             - 'poetry.lock'
             - 'Dockerfile'
+            - '.github/**'
     - name: Install and configure Poetry
       uses: snok/install-poetry@v1
       with:
