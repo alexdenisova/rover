@@ -8,9 +8,12 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  WORKING_DIR: speech-to-text
+
 defaults:
   run:
-    working-directory: speech-to-text
+    working-directory: ${{ env.WORKING_DIR }}
 
 jobs:
   update-version:
@@ -25,14 +28,14 @@ jobs:
         shell: bash
         id: compute
         run: |-
-          echo ${{ github.workspace }}
+          echo ${{ env.WORKING_DIR }}
           pwd
       - uses: ./.github/actions/update_version
         id: update_version
         with:
           repo: $GITHUB_REPOSITORY
           token: ${{ secrets.PERSONAL_TOKEN }}
-          path: ${{ github.workspace }}
+          path: ${{ env.WORKING_DIR }}
   build:
     runs-on: ubuntu-22.04
     needs: update-version
