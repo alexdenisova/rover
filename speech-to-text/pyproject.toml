@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "speech-to-text"
+version = "0.2.0"
+description = ""
+authors = ["Alex Denisova <alexadenisova@gmail.com>"]
+readme = "README.md"
+packages = [{include = "speech_to_text", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+openai-whisper = "^20250625"
+numpy = "2.1.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
