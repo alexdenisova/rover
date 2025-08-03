@@ -111,7 +111,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build Package
-        run: docker build -t ${{ github.event.repository.name }} --build-arg PYTHON_MODULE=speech_to_text .
+        run: ls && ls dist && docker build -t ${{ github.event.repository.name }} --build-arg PYTHON_MODULE=speech_to_text .
       - name: Publish Package
         run: |-
           TAG="${{ needs.update-version.outputs.release_version }}"
