@@ -11,6 +11,10 @@ inputs:
   repo:
     description: Github Repository <owner/name>
     required: true
+  path:
+    description: Path to working directory
+    required: false
+    default: .
 outputs:
   release_version:
     description: "The new release version"
@@ -43,7 +47,10 @@ runs:
     - name: Compute Version
       shell: bash
       id: compute
+      working-directory: ${{ inputs.path }}
       run: |-
+        echo ${{ inputs.path }}
+        pwd
         current="$(poetry version | awk '{print $NF}')"
         release_version="$current"
         needs_commit=false
@@ -96,6 +103,7 @@ runs:
     - name: Commit Version
       shell: bash
       if: steps.compute.outputs.needs_commit == 'true'
+      working-directory: ${{ inputs.path }}
       run: |
         poetry version  -- "${{ steps.compute.outputs.release_version }}"
         

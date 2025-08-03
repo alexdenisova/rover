@@ -26,12 +26,12 @@ jobs:
         with:
           repo: $GITHUB_REPOSITORY
           token: ${{ secrets.PERSONAL_TOKEN }}
+          path: ${{ github.workspace }}
   build:
     runs-on: ubuntu-22.04
     needs: update-version
     if: >-
-      always()
-      && needs.update-version.outputs.stop_workflow != 'true'
+      needs.update-version.outputs.stop_workflow != 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Set up python
