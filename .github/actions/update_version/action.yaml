@@ -30,14 +30,14 @@ runs:
     - name: Determine changed files
       uses: dorny/paths-filter@v3
       id: filter
-      with: #TODO: remove .github
+      with:
+        working-directory: ${{ inputs.path }}
         filters: |
           publish:
             - 'src/**'
             - 'pyproject.toml'
             - 'poetry.lock'
             - 'Dockerfile'
-            - '.github/**'
     - name: Install and configure Poetry
       uses: snok/install-poetry@v1
       with:
@@ -57,6 +57,7 @@ runs:
 
         if [[ ${{ github.ref }} != refs/tags* ]]; then
           if [[ "${{ steps.filter.outputs.publish }}" != "true" ]]; then
+            echo "No relevent changes"
             stop_workflow=true
           else
             tags=($(curl -sL -X 'GET' \
