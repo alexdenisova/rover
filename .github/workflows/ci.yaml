@@ -58,6 +58,7 @@ jobs:
         run: poetry install --no-interaction --no-root
       - name: Build
         run: >-
+          echo ${{ github.ref_type }}
           poetry build --format wheel
           && poetry export --without-hashes --format constraints.txt --with-credentials > dist/constraints.txt
           && poetry run python -m pip wheel --isolated --requirement dist/constraints.txt --wheel-dir dist/vendor
