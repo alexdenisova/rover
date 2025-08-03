@@ -30,6 +30,7 @@ jobs:
     needs: update-version
     if: >-
       always()
+      && !cancelled()
       && needs.update-version.outputs.stop_workflow != 'true'
     defaults:
       run:
@@ -82,9 +83,12 @@ jobs:
           git push origin tag ${{ needs.update-version.outputs.release_version }}
   publish-image:
     runs-on: ubuntu-22.04
-    needs:
-      - build
-    # if: github.ref_type == 'tag'
+    needs: build
+    if: >-
+      always()
+      && !cancelled()
+      && needs.build.result == 'success'
+      && github.ref_type == 'tag'
     defaults:
       run:
         working-directory: ${{ env.WORKING_DIR }}
@@ -124,9 +128,11 @@ jobs:
           path: "${{ env.WORKING_DIR }}/${{ github.event.repository.name }}.values.yaml"
   push-values:
     runs-on: ubuntu-22.04
-    needs:
-      - publish-image
-    if: github.ref_type == 'tag'
+    needs: publish-image
+    if: >-
+      always()
+      && !cancelled()
+      && needs.publish-image.result == 'success'
     env:
       VALUES_DIR: "values/speech-to-text"
     steps:
@@ -150,6 +156,10 @@ jobs:
   clean-image-tags:
     runs-on: ubuntu-22.04
     needs: publish-image
+    if: >-
+      always()
+      && !cancelled()
+      && needs.publish-image.result == 'success'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean_image_tags
