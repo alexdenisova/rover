@@ -11,10 +11,6 @@ on:
 env:
   WORKING_DIR: speech-to-text
 
-# defaults:
-#   run:
-#     working-directory: speech-to-text
-
 jobs:
   update-version:
     runs-on: ubuntu-22.04
