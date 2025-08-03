@@ -34,7 +34,8 @@ jobs:
     runs-on: ubuntu-22.04
     needs: update-version
     if: >-
-      needs.update-version.outputs.stop_workflow != 'true'
+      always()
+      && needs.update-version.outputs.stop_workflow != 'true'
     defaults:
       run:
         working-directory: ${{ env.WORKING_DIR }}

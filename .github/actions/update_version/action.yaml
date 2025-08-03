@@ -30,13 +30,14 @@ runs:
     - name: Determine changed files
       uses: dorny/paths-filter@v3
       id: filter
-      with:
+      with: #TODO: remove .github
         filters: |
           publish:
             - 'src/**'
             - 'pyproject.toml'
             - 'poetry.lock'
             - 'Dockerfile'
+            - '.github/**'
     - name: Install and configure Poetry
       uses: snok/install-poetry@v1
       with:
