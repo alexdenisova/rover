@@ -8,12 +8,18 @@ on:
   pull_request:
     branches: [main]
 
-defaults:
-  run:
-    working-directory: speech-to-text
+env:
+  WORKING_DIR: speech-to-text
+
+# defaults:
+#   run:
+#     working-directory: speech-to-text
 
 jobs:
   update-version:
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
     runs-on: ubuntu-22.04
     if: github.event_name != 'pull_request'
     outputs:
