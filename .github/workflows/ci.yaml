@@ -31,7 +31,7 @@ jobs:
         shell: bash
         id: compute
         run: |-
-          echo ${{ defaults.run.working-directory }}
+          echo ${{ env.WORKING_DIR }}
           pwd
       # - uses: ./.github/actions/update_version
       #   id: update_version
