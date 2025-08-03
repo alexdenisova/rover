@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "speech-to-text"
-version = "0.2.0"
+version = "25.8.0"
 description = ""
 authors = ["Alex Denisova <alexadenisova@gmail.com>"]
 readme = "README.md"
