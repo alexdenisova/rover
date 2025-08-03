@@ -68,6 +68,12 @@ runs:
               "https://api.github.com/repos/${{ inputs.repo }}/git/refs/tags" \
               | jq -r 'if type=="array" then .[] | .ref | sub("^refs/tags/"; "") else "" end'))
 
+            if [[ "${tags}" == "" ]]; then
+              needs_commit=true
+              stop_workflow=true
+              release_version="$(date '+%y.%-m.').0"
+            fi
+
             for tag in "${tags[@]}"; do
               if [[ "$tag" == "$current" ]]; then
                 needs_commit=true
