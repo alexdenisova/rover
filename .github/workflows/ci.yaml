@@ -3,7 +3,8 @@ name: Python CI
 on:
   push:
     tags: ["*.*.*"]
-    branches: [main]
+    branches: ["*"]
+    # branches: [main]
   pull_request:
     branches: [main]
 
