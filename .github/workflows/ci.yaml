@@ -27,12 +27,12 @@ jobs:
         run: |-
           echo ${{ defaults.run.working-directory }}
           pwd
-      - uses: ./.github/actions/update_version
-        id: update_version
-        with:
-          repo: $GITHUB_REPOSITORY
-          token: ${{ secrets.PERSONAL_TOKEN }}
-          path: ${{ defaults.run.working-directory }}
+      # - uses: ./.github/actions/update_version
+      #   id: update_version
+      #   with:
+      #     repo: $GITHUB_REPOSITORY
+      #     token: ${{ secrets.PERSONAL_TOKEN }}
+      #     path: ${{ defaults.run.working-directory }}
   build:
     runs-on: ubuntu-22.04
     needs: update-version
