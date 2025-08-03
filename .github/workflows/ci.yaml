@@ -21,6 +21,12 @@ jobs:
       release_version: ${{ steps.update_version.outputs.release_version }}
     steps:
       - uses: actions/checkout@v4
+      - name: Compute Version
+        shell: bash
+        id: compute
+        run: |-
+          echo ${{ github.workspace }}
+          pwd
       - uses: ./.github/actions/update_version
         id: update_version
         with:
