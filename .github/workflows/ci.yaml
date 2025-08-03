@@ -14,7 +14,7 @@ env:
 jobs:
   update-version:
     runs-on: ubuntu-22.04
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'push'
     outputs:
       stop_workflow: ${{ steps.update_version.outputs.stop_workflow }}
       release_version: ${{ steps.update_version.outputs.release_version }}
@@ -103,7 +103,7 @@ jobs:
         uses: actions/download-artifact@master
         with:
           name: build
-          path: dist
+          path: ${{ env.WORKING_DIR }}/dist
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
