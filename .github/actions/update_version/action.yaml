@@ -57,6 +57,7 @@ runs:
 
         if [[ ${{ github.ref }} != refs/tags* ]]; then
           if [[ "${{ steps.filter.outputs.publish }}" != "true" ]]; then
+            echo "No relevent changes"
             stop_workflow=true
           else
             tags=($(curl -sL -X 'GET' \
