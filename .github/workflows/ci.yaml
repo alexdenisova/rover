@@ -126,7 +126,7 @@ jobs:
           command="$(printf '%s %s' "$command" "$PUBLISH_CONTEXT")"
           echo "$command"
           eval "$command"
-          docker push ${IMAGE}
+          docker push $IMAGE_REPO:$TAG
 
           printf 'image:\n  repository: %s\n  tag: %s\n' \
           "$IMAGE_REPO" \
