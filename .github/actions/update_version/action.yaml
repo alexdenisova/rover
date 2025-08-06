@@ -34,10 +34,10 @@ runs:
         working-directory: ${{ inputs.path }}
         filters: |
           publish:
-            - 'src/**'
-            - 'pyproject.toml'
-            - 'poetry.lock'
-            - 'Dockerfile'
+            - '${{ inputs.path }}/src/**'
+            - '${{ inputs.path }}/pyproject.toml'
+            - '${{ inputs.path }}/poetry.lock'
+            - '${{ inputs.path }}/Dockerfile'
     - name: Install and configure Poetry
       uses: snok/install-poetry@v1
       with:
