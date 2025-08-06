@@ -3,7 +3,7 @@ name: Python CI
 on:
   push:
     tags: ["*.*.*"]
-    branches: ["*"] # [main]
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -161,7 +161,7 @@ jobs:
           git config --global user.name 'Action Push'
           git config --global user.email 'alexadenisova@gmail.com'
           git add -A
-          git commit -m "New ${{ github.event.repository.name }} version"
+          git commit -m "New ${{ github.event.repository.name }} version" || true
           git push
   clean-image-tags:
     runs-on: ubuntu-22.04
