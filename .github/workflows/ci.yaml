@@ -9,11 +9,18 @@ on:
 
 env:
   WORKING_DIR: speech-to-text
+  PUBLISH_BLD_ARGS: >-
+    SYSTEM_PACKAGES
+    PYTHON_MODULE
+  PUBLISH_DOCKERFILE: Dockerfile
+  PUBLISH_CONTEXT: "."
+  SYSTEM_PACKAGES: ffmpeg
+  PYTHON_MODULE: speech_to_text
 
 jobs:
   update-version:
     runs-on: ubuntu-22.04
-    if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/')
+    if: github.event_name != 'pull_request' && github.ref_type != 'tag'
     outputs:
       stop_workflow: ${{ steps.update_version.outputs.stop_workflow }}
       release_version: ${{ steps.update_version.outputs.release_version }}
@@ -30,6 +37,7 @@ jobs:
     needs: update-version
     if: >-
       always()
+      && !cancelled()
       && needs.update-version.outputs.stop_workflow != 'true'
     defaults:
       run:
@@ -40,7 +48,7 @@ jobs:
         id: setup-python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
       - name: Install and configure Poetry
         uses: snok/install-poetry@v1
         with:
@@ -71,9 +79,7 @@ jobs:
     needs:
       - update-version
       - build
-    if: >-
-      needs.update-version.outputs.stop_workflow != 'true'
-      && startsWith(github.ref, 'refs/tags/') != true
+    if: github.ref_type != 'tag'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -83,12 +89,12 @@ jobs:
           git push origin tag ${{ needs.update-version.outputs.release_version }}
   publish-image:
     runs-on: ubuntu-22.04
-    needs:
-      - update-version
-      - build
+    needs: build
     if: >-
-      needs.update-version.outputs.stop_workflow != 'true'
-      && startsWith(github.ref, 'refs/tags/')
+      always()
+      && !cancelled()
+      && needs.build.result == 'success'
+      && github.ref_type == 'tag'
     defaults:
       run:
         working-directory: ${{ env.WORKING_DIR }}
@@ -109,54 +115,61 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build Package
-        run: ls && ls dist && docker build -t ${{ github.event.repository.name }} --build-arg PYTHON_MODULE=speech_to_text .
       - name: Publish Package
         run: |-
-          TAG="${{ needs.update-version.outputs.release_version }}"
-          docker tag ${{ github.event.repository.name }} ${REGISTRY}/${GITHUB_REPOSITORY}:${TAG}
-          docker push ${REGISTRY}/${GITHUB_REPOSITORY}:${TAG}
+          IMAGE="${REGISTRY}/${GITHUB_REPOSITORY}:${GITHUB_REF_NAME#refs/tags/}"
+          command="docker build -t $IMAGE -f $PUBLISH_DOCKERFILE"
+          for arg in ${PUBLISH_BLD_ARGS}; do
+            command="$(printf '%s --build-arg %s=%s' "$command" "$arg" "$(printenv "$arg")")"
+          done
+          command="$(printf '%s %s' "$command" "$PUBLISH_CONTEXT")"
+          echo "$command"
+          eval "$command"
+          docker push ${IMAGE}
 
           printf 'image:\n  repository: %s\n  tag: %s\n' \
           "${REGISTRY}/${GITHUB_REPOSITORY}" \
-          "$TAG" \
+          "$IMAGE" \
           > "${{ github.event.repository.name }}.values.yaml"
       - name: Upload image artifact
         uses: actions/upload-artifact@master
         with:
           name: image-tag
           path: "${{ env.WORKING_DIR }}/${{ github.event.repository.name }}.values.yaml"
-  # push-values:
-  #   runs-on: ubuntu-22.04
-  #   needs:
-  #     - update-version
-  #     - publish-image
-  #   if: >-
-  #     needs.update-version.outputs.stop_workflow != 'true'
-  #     && startsWith(github.ref, 'refs/tags/')
-  #   env:
-  #     VALUES_DIR: "values/google-calendar-utility"
-  #   steps:
-  #     - name: Checkout into deployment
-  #       uses: actions/checkout@v4
-  #       with:
-  #         repository: alexdenisova/deployment
-  #         token: ${{ secrets.PERSONAL_TOKEN }}
-  #     - name: Download image artifact
-  #       uses: actions/download-artifact@master
-  #       with:
-  #         name: image-tag
-  #         path: ${{ env.VALUES_DIR }}
-  #     - name: Commit report
-  #       run: |
-  #         git config --global user.name 'Action Push'
-  #         git config --global user.email 'alexadenisova@gmail.com'
-  #         git add -A
-  #         git commit -m "New ${{ github.event.repository.name }} version"
-  #         git push
+  push-values:
+    runs-on: ubuntu-22.04
+    needs: publish-image
+    if: >-
+      always()
+      && !cancelled()
+      && needs.publish-image.result == 'success'
+    env:
+      VALUES_DIR: "values/speech-to-text"
+    steps:
+      - name: Checkout into deployment
+        uses: actions/checkout@v4
+        with:
+          repository: alexdenisova/deployment
+          token: ${{ secrets.PERSONAL_TOKEN }}
+      - name: Download image artifact
+        uses: actions/download-artifact@master
+        with:
+          name: image-tag
+          path: ${{ env.VALUES_DIR }}
+      - name: Commit report
+        run: |
+          git config --global user.name 'Action Push'
+          git config --global user.email 'alexadenisova@gmail.com'
+          git add -A
+          git commit -m "New ${{ github.event.repository.name }} version" || true
+          git push
   clean-image-tags:
     runs-on: ubuntu-22.04
     needs: publish-image
+    if: >-
+      always()
+      && !cancelled()
+      && needs.publish-image.result == 'success'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean_image_tags

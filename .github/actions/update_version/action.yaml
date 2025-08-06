@@ -114,7 +114,7 @@ runs:
       working-directory: ${{ inputs.path }}
       run: |
         poetry version  -- "${{ steps.compute.outputs.release_version }}"
-        
+
         git config --global user.name 'Version Update'
         git config --global user.email 'alexadenisova@gmail.com'
         git add -A
