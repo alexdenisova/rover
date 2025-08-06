@@ -120,7 +120,7 @@ jobs:
           IMAGE="${REGISTRY}/${GITHUB_REPOSITORY}:${GITHUB_REF_NAME#refs/tags/}"
           command="docker build -t $IMAGE -f $PUBLISH_DOCKERFILE"
           for arg in ${PUBLISH_BLD_ARGS}; do
-            command="$(printf '%s --build-arg %s' "$command" "$(printenv "$arg")")"
+            command="$(printf '%s --build-arg %s=%s' "$command" "$arg" "$(printenv "$arg")")"
           done
           command="$(printf '%s %s' "$command" "$PUBLISH_CONTEXT")"
           echo "$command"
