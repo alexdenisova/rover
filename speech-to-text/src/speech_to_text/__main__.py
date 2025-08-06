@@ -1,6 +1,7 @@
 import cgi
 import os
 import tempfile
+from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from faster_whisper import WhisperModel
@@ -73,13 +74,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
-    def log_request(self, code='-', size='-'):
+    def log_request(self, code="-", size="-"):
         if self.path == "/health":
             return
         if isinstance(code, HTTPStatus):
             code = code.value
-        self.log_message('"%s" %s %s',
-                         self.requestline, str(code), str(size))
+        self.log_message('"%s" %s %s', self.requestline, str(code), str(size))
 
 
 def run(server_class=HTTPServer, handler_class=Handler, port=8000):
