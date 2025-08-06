@@ -31,15 +31,20 @@ class WhisperHandler(BaseHTTPRequestHandler):
                     delete=False, suffix=".wav"
                 ) as temp_audio:
                     # Save the uploaded content to a temporary file
+                    print("Reading file")
                     file_content = file_item.file.read()
+                    print("Saving file")
                     temp_audio.write(file_content)
                     temp_path = temp_audio.name
+                    print("Saved file to " + temp_path)
 
                 # Transcribe using Whisper
                 result = model.transcribe(temp_path)
 
                 # Clean up the temporary file
+                print("unlinking file")
                 os.unlink(temp_path)
+                print("unlinked file")
 
                 # Send the transcription result
                 self.send_response(200)
@@ -50,7 +55,9 @@ class WhisperHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 # Clean up if temp file was created
                 if "temp_path" in locals() and os.path.exists(temp_path):
+                    print("unlinking file")
                     os.unlink(temp_path)
+                    print("unlinked file")
 
                 self.send_response(500)
                 self.end_headers()
