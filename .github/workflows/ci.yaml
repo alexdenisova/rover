@@ -117,8 +117,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish Package
         run: |-
-          IMAGE="${REGISTRY}/${GITHUB_REPOSITORY}:${GITHUB_REF_NAME#refs/tags/}"
-          command="docker build -t $IMAGE -f $PUBLISH_DOCKERFILE"
+          TAG="${GITHUB_REF_NAME#refs/tags/}"
+          IMAGE_REPO="${REGISTRY}/${GITHUB_REPOSITORY}"
+          command="docker build -t $IMAGE_REPO:$TAG -f $PUBLISH_DOCKERFILE"
           for arg in ${PUBLISH_BLD_ARGS}; do
             command="$(printf '%s --build-arg %s=%s' "$command" "$arg" "$(printenv "$arg")")"
           done
@@ -128,8 +129,8 @@ jobs:
           docker push ${IMAGE}
 
           printf 'image:\n  repository: %s\n  tag: %s\n' \
-          "${REGISTRY}/${GITHUB_REPOSITORY}" \
-          "$IMAGE" \
+          "$IMAGE_REPO" \
+          "$TAG" \
           > "${{ github.event.repository.name }}.values.yaml"
       - name: Upload image artifact
         uses: actions/upload-artifact@master
