@@ -8,8 +8,8 @@ packages = [{ include = "speech_to_text", from = "src" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-openai-whisper = "^20250625"
 numpy = "2.1.0"
+faster-whisper = "^1.2.0"
 
 [tool.poetry.group.dev.dependencies]
 bandit = "^1.8.6"
