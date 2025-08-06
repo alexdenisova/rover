@@ -9,11 +9,11 @@ on:
 
 env:
   WORKING_DIR: speech-to-text
-  DOCKER_BLD_ARGS: >-
+  PUBLISH_BLD_ARGS: >-
     SYSTEM_PACKAGES
     PYTHON_MODULE
-  DOCKER_FILE_NAME: Dockerfile
-  DOCKER_CONTEXT: "."
+  PUBLISH_DOCKERFILE: Dockerfile
+  PUBLISH_CONTEXT: "."
   SYSTEM_PACKAGES: ffmpeg
   PYTHON_MODULE: speech_to_text
 
@@ -118,11 +118,11 @@ jobs:
       - name: Publish Package
         run: |-
           IMAGE="${REGISTRY}/${GITHUB_REPOSITORY}:${GITHUB_REF_NAME#refs/tags/}"
-          command="docker build -t $IMAGE -f $DOCKER_FILE_NAME"
-          for arg in ${DOCKER_BLD_ARGS}; do
+          command="docker build -t $IMAGE -f $PUBLISH_DOCKERFILE"
+          for arg in ${PUBLISH_BLD_ARGS}; do
             command="$(printf '%s --build-arg %s' "$command" "$(printenv "$arg")")"
           done
-          command="$(printf '%s %s' "$command" "$DOCKER_CONTEXT")"
+          command="$(printf '%s %s' "$command" "$PUBLISH_CONTEXT")"
           echo "$command"
           eval "$command"
           docker push ${IMAGE}
