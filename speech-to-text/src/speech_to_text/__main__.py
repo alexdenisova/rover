@@ -75,6 +75,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def log_request(self, code="-", size="-"):
+        # Removed /health from logs so Kubernetes healthcheck wouldn't spam
         if self.path == "/health":
             return
         if isinstance(code, HTTPStatus):
