@@ -73,6 +73,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
+    def log_request(self, code='-', size='-'):
+        if self.path == "/health":
+            return
+        if isinstance(code, HTTPStatus):
+            code = code.value
+        self.log_message('"%s" %s %s',
+                         self.requestline, str(code), str(size))
+
 
 def run(server_class=HTTPServer, handler_class=Handler, port=8000):
     server_address = ("", port)

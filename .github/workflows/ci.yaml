@@ -129,7 +129,7 @@ jobs:
 
           printf 'image:\n  repository: %s\n  tag: %s\n' \
           "${REGISTRY}/${GITHUB_REPOSITORY}" \
-          "$TAG" \
+          "$IMAGE" \
           > "${{ github.event.repository.name }}.values.yaml"
       - name: Upload image artifact
         uses: actions/upload-artifact@master
