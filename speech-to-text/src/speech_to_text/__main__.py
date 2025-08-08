@@ -3,14 +3,18 @@ import logging
 import os
 import re
 import shutil
-import tempfile
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from faster_whisper import WhisperModel
 
-CHUNKS_DIR = "/tmp/chunks"  # TODO: make this env
-AUDIO_PATH = "/tmp/audio.wav"
+CHUNKS_DIR = os.getenv(
+    "S2T_CHUNKS_DIR", "/tmp/chunks"
+)  # dirname where chunks will be saved temporarily
+AUDIO_DIR = os.getenv(
+    "S2T_AUDIO_DIR", "/tmp"
+)  # dirname where the complete audio file will be saved temporarily
+AUDIO_PATH = os.path.join(AUDIO_DIR, "audio.wav")
 
 model = WhisperModel("tiny", device="cpu", compute_type="int8")
 
@@ -154,5 +158,7 @@ if __name__ == "__main__":
     if os.path.exists(CHUNKS_DIR):
         shutil.rmtree(CHUNKS_DIR)
     os.mkdir(CHUNKS_DIR, mode=0o755)
-    logging.basicConfig(format='%(asctime)s - %(levelname)s: %(message)s', level=logging.DEBUG)
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s: %(message)s", level=logging.DEBUG
+    )
     run()

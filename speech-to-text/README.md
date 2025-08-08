@@ -1,6 +1,6 @@
 # Speech-to-Text Server
 
-A Speech-to-Text API based on OpenAI Whisper used to transcribe audio for Rover instructions.
+A Speech-to-Text API based on OpenAI Whisper used to transcribe audio for Rover instructions. Currently, only one file at a time can be processed.
 
 To transcribe audio use:
 `curl -X POST -F "file=@/path/audio.wav" http://transcribe.alexdenisova.net/transcribe`
