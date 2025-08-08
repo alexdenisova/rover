@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, Header, HTTPException, UploadFile, status
+from fastapi import FastAPI, Header, HTTPException, Request, UploadFile, status
 from fastapi.responses import PlainTextResponse
 from faster_whisper import WhisperModel
 
@@ -154,6 +154,10 @@ def combine_chunks(final_path: Path, chunks_dir: str):
                 final_file.write(chunk_file.read())
             chunk_path.unlink()  # Delete the chunk
 
+# Filter /health logs
+class HealthCheckFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "GET /health" not in record.getMessage()
 
 if __name__ == "__main__":
     if Path(CHUNKS_DIR).exists():
@@ -164,6 +168,9 @@ if __name__ == "__main__":
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s: %(message)s", level=logging.DEBUG
     )
+
+    uvicorn_access = logging.getLogger("uvicorn.access")
+    uvicorn_access.addFilter(HealthCheckFilter())
 
     uvicorn.run(
         "speech_to_text.__main__:app",
