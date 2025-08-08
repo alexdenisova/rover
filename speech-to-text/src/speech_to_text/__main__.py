@@ -90,6 +90,37 @@ async def transcribe(file: UploadFile, content_range: str = Header(None)):
             detail=f"Error during transcription: {str(e)}",
         )
 
+    def download_file(self, file_path: str):
+        """Downloads file from form. Returns number of bytes downloaded."""
+        form = cgi.FieldStorage(
+            fp=self.rfile, headers=self.headers, environ={"REQUEST_METHOD": "POST"}
+        )
+        if "file" not in form:
+            return 0
+        file_item = form["file"]
+        file_content = file_item.file.read()
+
+        with open(file_path, "wb") as file:
+            file.write(file_content)
+        logging.info(f"Downloaded file to {file_path}")
+        return os.path.getsize(file_path)
+
+    def combine_chunks(self, final_path, chunks_dir):
+        """Combine all chunks into the final file."""
+        chunks = sorted(
+            [
+                os.path.join(chunks_dir, f)
+                for f in os.listdir(chunks_dir)
+                if os.path.isfile(os.path.join(chunks_dir, f))
+            ]
+        )
+
+        with open(final_path, "wb") as final_file:
+            for chunk_path in chunks:
+                with open(chunk_path, "rb") as chunk_file:
+                    final_file.write(chunk_file.read())
+                os.remove(chunk_path)  # Delete the chunk after combining
+
 
 @app.get("/health")
 async def health_check():
