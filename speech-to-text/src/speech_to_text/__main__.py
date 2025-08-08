@@ -46,6 +46,7 @@ async def transcribe(file: UploadFile, content_range: str = Header(None)):
             received_size = await save_upload_file(file, chunk_path)
 
             if received_size != chunk_size:
+                logging.info("Chunk has wrong size")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Chunk has unexpected size. Expected {chunk_size}, received {received_size}",
@@ -63,6 +64,7 @@ async def transcribe(file: UploadFile, content_range: str = Header(None)):
             # Handle single file upload
             received_size = await save_upload_file(file, AUDIO_PATH)
             if received_size == 0:
+                logging.info("Received empty or no file")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST, detail="No file uploaded"
                 )
@@ -89,38 +91,6 @@ async def transcribe(file: UploadFile, content_range: str = Header(None)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error during transcription: {str(e)}",
         )
-
-    def download_file(self, file_path: str):
-        """Downloads file from form. Returns number of bytes downloaded."""
-        form = cgi.FieldStorage(
-            fp=self.rfile, headers=self.headers, environ={"REQUEST_METHOD": "POST"}
-        )
-        if "file" not in form:
-            return 0
-        file_item = form["file"]
-        file_content = file_item.file.read()
-
-        with open(file_path, "wb") as file:
-            file.write(file_content)
-        logging.info(f"Downloaded file to {file_path}")
-        return os.path.getsize(file_path)
-
-    def combine_chunks(self, final_path, chunks_dir):
-        """Combine all chunks into the final file."""
-        chunks = sorted(
-            [
-                os.path.join(chunks_dir, f)
-                for f in os.listdir(chunks_dir)
-                if os.path.isfile(os.path.join(chunks_dir, f))
-            ]
-        )
-
-        with open(final_path, "wb") as final_file:
-            for chunk_path in chunks:
-                with open(chunk_path, "rb") as chunk_file:
-                    final_file.write(chunk_file.read())
-                os.remove(chunk_path)  # Delete the chunk after combining
-
 
 @app.get("/health")
 async def health_check():
