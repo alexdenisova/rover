@@ -116,7 +116,8 @@ async def transcribe(file: UploadFile, content_range: str = Header(None)):
             info.language_probability,
         )
 
-        text = "".join(segment.text for segment in segments).strip()
+        text = "".join(segment.text for segment in segments).strip() + "\n"
+        logging.info("text: " + text)
 
         # Clean up
         AUDIO_PATH.unlink(missing_ok=True)
