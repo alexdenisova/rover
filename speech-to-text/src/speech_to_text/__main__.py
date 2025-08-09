@@ -24,8 +24,38 @@ Path(AUDIO_DIR).mkdir(parents=True, exist_ok=True)
 model = WhisperModel("tiny", device="cpu", compute_type="int8")
 
 
+async def save_upload_file(upload_file: UploadFile, destination: Path) -> int:
+    """Save uploaded file to destination and return size in bytes"""
+    try:
+        with destination.open("wb") as buffer:
+            content = await upload_file.read()
+            buffer.write(content)
+        logging.info(f"Saved file to {destination}")
+        return destination.stat().st_size
+    except Exception as e:
+        logging.error(f"Error saving file: {str(e)}")
+        raise
+
+
+# TODO: add chunks to unique directory + periodically delete old directories (in case not all chunks were sent)
+def combining_chunks(final_path: Path, chunks_dir: str):
+    """Combine all chunks into final file"""
+    chunks = sorted(
+        Path(chunks_dir) / f
+        for f in os.listdir(chunks_dir)
+        if (Path(chunks_dir) / f).is_file()
+    )
+
+    with final_path.open("wb") as final_file:
+        for chunk_path in chunks:
+            with chunk_path.open("rb") as chunk_file:
+                final_file.write(chunk_file.read())
+            chunk_path.unlink()  # Delete the chunk
+
+
 @app.post("/transcribe")
 async def transcribe(file: UploadFile, content_range: str = Header(None)):
+    logging.info("transribe")
     try:
         if content_range:
             # Handle chunked upload
@@ -41,8 +71,17 @@ async def transcribe(file: UploadFile, content_range: str = Header(None)):
             total_size = int(range_match.group(3))
             chunk_size = end - start + 1
 
+            logging.info(f"got: {start} {end} {chunk_size}")
+
+            # If first chunk, then clean directory
+            if start == 0:
+                if Path(CHUNKS_DIR).exists():
+                    shutil.rmtree(CHUNKS_DIR)
+                Path(CHUNKS_DIR).mkdir(mode=0o755)
+
             # Save chunk
             chunk_path = Path(CHUNKS_DIR) / f"{start}-{end}"
+            logging.info(f"Saving chunk to {chunk_path}")
             received_size = await save_upload_file(file, chunk_path)
 
             if received_size != chunk_size:
@@ -54,7 +93,7 @@ async def transcribe(file: UploadFile, content_range: str = Header(None)):
 
             # Check if this is the last chunk
             if end == (total_size - 1):
-                combine_chunks(AUDIO_PATH, CHUNKS_DIR)
+                combining_chunks(AUDIO_PATH, CHUNKS_DIR)
                 logging.info(f"Combined chunks as {AUDIO_PATH}")
             else:
                 return PlainTextResponse(
@@ -92,42 +131,17 @@ async def transcribe(file: UploadFile, content_range: str = Header(None)):
             detail=f"Error during transcription: {str(e)}",
         )
 
+
 @app.get("/health")
 async def health_check():
     return PlainTextResponse("OK")
 
 
-async def save_upload_file(upload_file: UploadFile, destination: Path) -> int:
-    """Save uploaded file to destination and return size in bytes"""
-    try:
-        with destination.open("wb") as buffer:
-            content = await upload_file.read()
-            buffer.write(content)
-        logging.info(f"Saved file to {destination}")
-        return destination.stat().st_size
-    except Exception as e:
-        logging.error(f"Error saving file: {str(e)}")
-        raise
-
-
-def combine_chunks(final_path: Path, chunks_dir: str):
-    """Combine all chunks into final file"""
-    chunks = sorted(
-        Path(chunks_dir) / f
-        for f in os.listdir(chunks_dir)
-        if (Path(chunks_dir) / f).is_file()
-    )
-
-    with final_path.open("wb") as final_file:
-        for chunk_path in chunks:
-            with chunk_path.open("rb") as chunk_file:
-                final_file.write(chunk_file.read())
-            chunk_path.unlink()  # Delete the chunk
-
 # Filter /health logs
 class HealthCheckFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         return "GET /health" not in record.getMessage()
+
 
 if __name__ == "__main__":
     if Path(CHUNKS_DIR).exists():
