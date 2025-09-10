@@ -58,6 +58,8 @@ typedef struct {
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define ADC_BUFFER_SIZE 4
+#define DATA_BUFFER_SIZE 200
+#define BIT_0 ( 1 << 0 )
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -79,19 +81,21 @@ UART_HandleTypeDef huart2;
 osThreadId audioTaskHandle;
 osMessageQId audioQueueHandle;
 /* USER CODE BEGIN PV */
+EventGroupHandle_t buttonEventHandle;
+
 uint16_t audio_adc[ADC_BUFFER_SIZE];
 uint32_t samples_taken = 0;
 
 const uint32_t SAMPLE_RATE = 10000;
 const uint16_t BITS_PER_SAMPLE = 16; // Half Word
-const float DURATION = 3.0f;
+const float DURATION = 2.0f;
 const uint32_t NUMBER_OF_SAMPLES = SAMPLE_RATE * DURATION;
 const uint16_t NUMBER_OF_CHANNELS = 1;
-const uint32_t DATA_SIZE = NUMBER_OF_SAMPLES * NUMBER_OF_CHANNELS * BITS_PER_SAMPLE / 8;
+const uint32_t DATA_SIZE = NUMBER_OF_SAMPLES * NUMBER_OF_CHANNELS
+    * BITS_PER_SAMPLE / 8;
+const uint32_t FILE_SIZE = sizeof(WavHeader) + DATA_SIZE;
 
 char TxBuffer[250];
-FIL Fil; // TODO: pass as argument
-uint16_t AD_RES;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -103,24 +107,32 @@ static void MX_SPI2_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_ADC1_Init(void);
-void vAudioTask(void const * argument);
+void vAudioTask(void const *argument);
 
 /* USER CODE BEGIN PFP */
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static void UART_Print(char *str) {
-  HAL_UART_Transmit(&huart2, (uint8_t*) str, strlen(str), 100);
+static void UART_Log(char *str) {
+  HAL_UART_Transmit(&huart2, (uint8_t*) str, strlen(str), HAL_MAX_DELAY);
+}
+
+#define UART_Transmit_ESP32(x) _Generic((x), \
+    char*: HAL_UART_Transmit(&huart1, (uint8_t*) x, strlen(x), HAL_MAX_DELAY), \
+    WavHeader*: HAL_UART_Transmit(&huart1, (uint8_t*) x, sizeof(WavHeader), HAL_MAX_DELAY))
+
+static void UART_Transmit_Buffer_ESP32(int16_t *buffer, uint16_t buffer_idx) {
+  HAL_UART_Transmit(&huart1, (uint8_t*) buffer, buffer_idx * sizeof(int16_t),
+      HAL_MAX_DELAY);
 }
 /* USER CODE END 0 */
 
 /**
-  * @brief  The application entry point.
-  * @retval int
-  */
-int main(void)
-{
+ * @brief  The application entry point.
+ * @retval int
+ */
+int main(void) {
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -151,19 +163,7 @@ int main(void)
   MX_TIM3_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
-  while (HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == GPIO_PIN_SET) {
-    }
-    FATFS FatFs;
-    FRESULT FR_Status;
-    FR_Status = f_mount(&FatFs, "", 1);
-    if (FR_Status != FR_OK) {
-      sprintf(TxBuffer, "Error! While Mounting SD Card, Error Code: (%i)\r\n",
-          FR_Status);
-      UART_Print(TxBuffer);
-      Error_Handler();
-    }
-    sprintf(TxBuffer, "SD Card Mounted Successfully! \r\n\n");
-    UART_Print(TxBuffer);
+  HAL_TIM_Base_Start(&htim3);
 
   /* USER CODE END 2 */
 
@@ -185,15 +185,13 @@ int main(void)
   audioQueueHandle = osMessageCreate(osMessageQ(audioQueue), NULL);
 
   /* USER CODE BEGIN RTOS_QUEUES */
-  HAL_TIM_Base_Start(&htim3);
-    HAL_ADC_Start_DMA(&hadc1, (uint32_t*)audio_adc, ADC_BUFFER_SIZE);
-//    HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&AD_RES, 1);
+  buttonEventHandle = xEventGroupCreate();
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
   /* definition and creation of audioTask */
-  osThreadDef(audioTask, vAudioTask, osPriorityNormal, 0, 128);
+  osThreadDef(audioTask, vAudioTask, osPriorityNormal, 0, 2200);
   audioTaskHandle = osThreadCreate(osThread(audioTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
@@ -205,8 +203,7 @@ int main(void)
   /* We should never get here as control is now taken by the scheduler */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+  while (1) {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -215,22 +212,21 @@ int main(void)
 }
 
 /**
-  * @brief System Clock Configuration
-  * @retval None
-  */
-void SystemClock_Config(void)
-{
-  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+ * @brief System Clock Configuration
+ * @retval None
+ */
+void SystemClock_Config(void) {
+  RCC_OscInitTypeDef RCC_OscInitStruct = { 0 };
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = { 0 };
 
   /** Configure the main internal regulator output voltage
-  */
+   */
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE2);
 
   /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
+   * in the RCC_OscInitTypeDef structure.
+   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_BYPASS;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
@@ -239,46 +235,43 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLN = 336;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
   RCC_OscInitStruct.PLL.PLLQ = 3;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
     Error_Handler();
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+   */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
+      | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
-  {
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK) {
     Error_Handler();
   }
 }
 
 /**
-  * @brief ADC1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_ADC1_Init(void)
-{
+ * @brief ADC1 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_ADC1_Init(void) {
 
   /* USER CODE BEGIN ADC1_Init 0 */
 
   /* USER CODE END ADC1_Init 0 */
 
-  ADC_ChannelConfTypeDef sConfig = {0};
+  ADC_ChannelConfTypeDef sConfig = { 0 };
 
   /* USER CODE BEGIN ADC1_Init 1 */
 
   /* USER CODE END ADC1_Init 1 */
 
   /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
-  */
+   */
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
@@ -291,18 +284,16 @@ static void MX_ADC1_Init(void)
   hadc1.Init.NbrOfConversion = 1;
   hadc1.Init.DMAContinuousRequests = ENABLE;
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
-  if (HAL_ADC_Init(&hadc1) != HAL_OK)
-  {
+  if (HAL_ADC_Init(&hadc1) != HAL_OK) {
     Error_Handler();
   }
 
   /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
-  */
+   */
   sConfig.Channel = ADC_CHANNEL_0;
   sConfig.Rank = 1;
   sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
     Error_Handler();
   }
   /* USER CODE BEGIN ADC1_Init 2 */
@@ -312,12 +303,11 @@ static void MX_ADC1_Init(void)
 }
 
 /**
-  * @brief SPI2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_SPI2_Init(void)
-{
+ * @brief SPI2 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_SPI2_Init(void) {
 
   /* USER CODE BEGIN SPI2_Init 0 */
 
@@ -339,8 +329,7 @@ static void MX_SPI2_Init(void)
   hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi2.Init.CRCPolynomial = 10;
-  if (HAL_SPI_Init(&hspi2) != HAL_OK)
-  {
+  if (HAL_SPI_Init(&hspi2) != HAL_OK) {
     Error_Handler();
   }
   /* USER CODE BEGIN SPI2_Init 2 */
@@ -350,42 +339,38 @@ static void MX_SPI2_Init(void)
 }
 
 /**
-  * @brief TIM3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM3_Init(void)
-{
+ * @brief TIM3 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_TIM3_Init(void) {
 
   /* USER CODE BEGIN TIM3_Init 0 */
 
   /* USER CODE END TIM3_Init 0 */
 
-  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_ClockConfigTypeDef sClockSourceConfig = { 0 };
+  TIM_MasterConfigTypeDef sMasterConfig = { 0 };
 
   /* USER CODE BEGIN TIM3_Init 1 */
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 840-1;
+  htim3.Init.Prescaler = 840 - 1;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 10-1;
+  htim3.Init.Period = 10 - 1;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
-  {
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK) {
     Error_Handler();
   }
   sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
-  {
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK) {
     Error_Handler();
   }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
-  {
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK) {
     Error_Handler();
   }
   /* USER CODE BEGIN TIM3_Init 2 */
@@ -395,12 +380,11 @@ static void MX_TIM3_Init(void)
 }
 
 /**
-  * @brief USART1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART1_UART_Init(void)
-{
+ * @brief USART1 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_USART1_UART_Init(void) {
 
   /* USER CODE BEGIN USART1_Init 0 */
 
@@ -410,15 +394,14 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 500000;
+  huart1.Init.BaudRate = 250000;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
   huart1.Init.Mode = UART_MODE_TX_RX;
   huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
-  {
+  if (HAL_UART_Init(&huart1) != HAL_OK) {
     Error_Handler();
   }
   /* USER CODE BEGIN USART1_Init 2 */
@@ -428,12 +411,11 @@ static void MX_USART1_UART_Init(void)
 }
 
 /**
-  * @brief USART2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART2_UART_Init(void)
-{
+ * @brief USART2 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_USART2_UART_Init(void) {
 
   /* USER CODE BEGIN USART2_Init 0 */
 
@@ -450,8 +432,7 @@ static void MX_USART2_UART_Init(void)
   huart2.Init.Mode = UART_MODE_TX_RX;
   huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart2) != HAL_OK)
-  {
+  if (HAL_UART_Init(&huart2) != HAL_OK) {
     Error_Handler();
   }
   /* USER CODE BEGIN USART2_Init 2 */
@@ -461,10 +442,9 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
-  * Enable DMA controller clock
-  */
-static void MX_DMA_Init(void)
-{
+ * Enable DMA controller clock
+ */
+static void MX_DMA_Init(void) {
 
   /* DMA controller clock enable */
   __HAL_RCC_DMA2_CLK_ENABLE();
@@ -477,15 +457,14 @@ static void MX_DMA_Init(void)
 }
 
 /**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_GPIO_Init(void)
-{
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-/* USER CODE BEGIN MX_GPIO_Init_1 */
-/* USER CODE END MX_GPIO_Init_1 */
+ * @brief GPIO Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_GPIO_Init(void) {
+  GPIO_InitTypeDef GPIO_InitStruct = { 0 };
+  /* USER CODE BEGIN MX_GPIO_Init_1 */
+  /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
@@ -500,13 +479,13 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, Forward_Pin|SD_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, Forward_Pin | SD_CS_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : B1_Pin */
-  GPIO_InitStruct.Pin = B1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+  /*Configure GPIO pin : PC13 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pin : LED_Pin */
   GPIO_InitStruct.Pin = LED_Pin;
@@ -536,67 +515,55 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(SD_CS_GPIO_Port, &GPIO_InitStruct);
 
-/* USER CODE BEGIN MX_GPIO_Init_2 */
-/* USER CODE END MX_GPIO_Init_2 */
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+
+  /* USER CODE BEGIN MX_GPIO_Init_2 */
+  /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
-//void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
-//  // Conversion Complete & DMA Transfer Complete As Well
-//  int16_t adc = (int16_t) (((uint64_t) AD_RES) * INT16_MAX * 2 / 4095
-//      + INT16_MIN); // Store sample
-//  xQueueSendFromISR(audioQueueHandle, &adc, portMAX_DELAY);
-//  samples_taken++;
-//  if (samples_taken == NUMBER_OF_SAMPLES) {
-//    HAL_ADC_Stop_DMA(&hadc1);
-//    sprintf(TxBuffer, "Stopped DMA\n");
-//    UART_Print(TxBuffer);
-//    UBaseType_t waiting = uxQueueMessagesWaitingFromISR(audioQueueHandle);
-//    sprintf(TxBuffer, "Waiting: %d\n", waiting);
-//    UART_Print(TxBuffer);
-//  }
-//}
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
-  int16_t adc;
-  for (int i = 0; i < ADC_BUFFER_SIZE; i++) {
-    adc = (int16_t) (((uint64_t) audio_adc[i]) * INT16_MAX * 2 / 4095
-        + INT16_MIN);
-    xQueueSendFromISR(audioQueueHandle, &adc, portMAX_DELAY);
-    samples_taken++;
-    if (samples_taken == NUMBER_OF_SAMPLES) {
-      HAL_ADC_Stop_DMA(hadc);
-      sprintf(TxBuffer, "Stopped DMA\n");
-      UART_Print(TxBuffer);
-      UBaseType_t waiting = uxQueueMessagesWaitingFromISR(audioQueueHandle);
-      sprintf(TxBuffer, "Waiting: %d\n", waiting);
-      UART_Print(TxBuffer);
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+  // If button pressed, set Event flag and start ADC
+  if (GPIO_Pin == GPIO_PIN_13) {
+    EventBits_t uxBits = xEventGroupGetBitsFromISR(buttonEventHandle);
+    if ((uxBits & BIT_0) == 0) { // If Event flag not set
+      UART_Log("Recording\n");
+      HAL_ADC_Start_DMA(&hadc1, (uint32_t*) audio_adc, ADC_BUFFER_SIZE);
+      BaseType_t xHigherPriorityTaskWoken = pdFALSE; // TODO: awaken audiotask
+      xEventGroupSetBitsFromISR(buttonEventHandle, BIT_0,
+          &xHigherPriorityTaskWoken);
     }
   }
 }
 
-FRESULT write_wav_header(const char *filename) {
-  FRESULT FR_Status = f_open(&Fil, filename,
-  FA_WRITE | FA_READ | FA_CREATE_ALWAYS);
-  if (FR_Status != FR_OK) {
-    sprintf(TxBuffer,
-        "Error! While Creating/Opening A New Text File, Error Code: (%i)\r\n",
-        FR_Status);
-    UART_Print(TxBuffer);
-    return FR_Status;
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
+  int16_t adc;
+  for (int i = 0; i < ADC_BUFFER_SIZE; i++) {
+    // Map ADC data to int16_t
+    adc = (int16_t) (((uint64_t) audio_adc[i]) * INT16_MAX * 2 / 4095
+        + INT16_MIN);
+
+    // Add data to queue
+    xQueueSendFromISR(audioQueueHandle, &adc, portMAX_DELAY);
+
+    samples_taken++;
+    if (samples_taken == NUMBER_OF_SAMPLES) {
+      HAL_ADC_Stop_DMA(hadc);
+      UART_Log("Finished recording\n");
+      samples_taken = 0;
+    }
   }
-  sprintf(TxBuffer,
-      "Text File Created & Opened! Writing Data To The Text File..\r\n\n");
-  UART_Print(TxBuffer);
+}
 
+// Creates the WAV header and sends it via UART to ESP32
+void Write_WAV_Header() {
+  // Fill in WAV header struct
   WavHeader header;
-
-  // RIFF header
   memcpy(header.riff_header, "RIFF", 4);
-
   header.wav_size = DATA_SIZE + sizeof(WavHeader) - 8;
   memcpy(header.wave_header, "WAVE", 4);
-
-  // Format header
   memcpy(header.fmt_header, "fmt ", 4);
   header.fmt_chunk_size = 16;
   header.audio_format = 1; // PCM
@@ -605,17 +572,11 @@ FRESULT write_wav_header(const char *filename) {
   header.bits_per_sample = BITS_PER_SAMPLE;
   header.byte_rate = DATA_SIZE;
   header.block_align = NUMBER_OF_CHANNELS * BITS_PER_SAMPLE / 8;
-
-  // Data header
   memcpy(header.data_header, "data", 4);
   header.data_bytes = DATA_SIZE;
 
-  // Write header to file
-  UINT WWC;
-  f_write(&Fil, &header, sizeof(WavHeader), &WWC);
-  sprintf(TxBuffer, "written header.\n");
-  UART_Print(TxBuffer);
-  return FR_OK;
+  // Send header to ESP32
+UART_Transmit_ESP32(&header);
 }
 /* USER CODE END 4 */
 
@@ -626,82 +587,86 @@ FRESULT write_wav_header(const char *filename) {
  * @retval None
  */
 /* USER CODE END Header_vAudioTask */
-void vAudioTask(void const * argument)
-{
-  /* USER CODE BEGIN 5 */
-  const TickType_t xDelay = 1 / portTICK_PERIOD_MS;
+void vAudioTask(void const *argument) {
+/* USER CODE BEGIN 5 */
+const TickType_t xDelay = 1 / portTICK_PERIOD_MS;
 
-  int16_t data;
-  uint32_t idx = 0;
-  UINT wwc;
-  bool stopped = false;
+int16_t data_buffer[DATA_BUFFER_SIZE];
+uint16_t buffer_idx = 0;
+bool sending_file = false; // Resets after the file has been sent
+uint32_t data_sent = 0; // Number of bytes from data batch sent to ESP32
 
-  write_wav_header("output.wav"); //TODO: check status, unmount if error
-
-  /* Infinite loop */
-  for (;;) {
+/* Infinite loop */
+for (;;) {
+  EventBits_t uxBits = xEventGroupGetBits(buttonEventHandle);
+  if ((uxBits & BIT_0) != 0) {
+    if (!sending_file) {
+      // Transmit file size
+      char uart_buffer[20];
+      sprintf(uart_buffer, "%lu\n", FILE_SIZE);
+      UART_Transmit_ESP32(uart_buffer);
+      // Transmit header of WAV file
+      Write_WAV_Header(&huart1);
+      sending_file = true;
+    }
+    int16_t data;
     while (xQueueReceive(audioQueueHandle, &data, 0)) {
-      f_write(&Fil, &data, sizeof(data), &wwc); //TODO: add buffer
-      idx++;
-    }
-    if (idx == NUMBER_OF_SAMPLES && !stopped) {
-      f_close(&Fil);
-      FSIZE_t file_size = f_size(&Fil);
-      sprintf(TxBuffer, "WAV file created successfully. File size: %d\n",
-          file_size);
-      UART_Print(TxBuffer);
+      data_buffer[buffer_idx++] = data;
+      UBaseType_t data_left = uxQueueMessagesWaitingFromISR(audioQueueHandle);
 
-      FRESULT FR_Status = f_mount(NULL, "", 0);
-      if (FR_Status != FR_OK) {
-        sprintf(TxBuffer,
-            "Error! While Un-mounting SD Card, Error Code: (%i)\r\n",
-            FR_Status);
-        UART_Print(TxBuffer);
-      } else {
-        sprintf(TxBuffer, "SD Card Un-mounted Successfully! \r\n");
-        UART_Print(TxBuffer);
+      if ((buffer_idx == DATA_BUFFER_SIZE) || (data_left == 0)) {
+        // If buffer is full or there is no more data left in queue, then send buffer contents to ESP32
+        UART_Transmit_Buffer_ESP32(data_buffer, buffer_idx);
+        data_sent += buffer_idx;
+        // Empty buffer
+        memset(data_buffer, '\0', sizeof(data_buffer));
+        buffer_idx = 0;
       }
-      stopped = true;
     }
-    osDelay(xDelay * 1000);
+    if (data_sent == NUMBER_OF_SAMPLES) {
+      UART_Log("WAV file sent successfully\n");
+      // Return to initial state
+      xEventGroupClearBits(buttonEventHandle, BIT_0);
+      data_sent = 0;
+      sending_file = false;
+    }
   }
-  /* USER CODE END 5 */
+  osDelay(xDelay * 1000);
+}
+/* USER CODE END 5 */
 }
 
 /**
-  * @brief  Period elapsed callback in non blocking mode
-  * @note   This function is called  when TIM1 interrupt took place, inside
-  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
-  * a global variable "uwTick" used as application time base.
-  * @param  htim : TIM handle
-  * @retval None
-  */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-  /* USER CODE BEGIN Callback 0 */
+ * @brief  Period elapsed callback in non blocking mode
+ * @note   This function is called  when TIM1 interrupt took place, inside
+ * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+ * a global variable "uwTick" used as application time base.
+ * @param  htim : TIM handle
+ * @retval None
+ */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+/* USER CODE BEGIN Callback 0 */
 
-  /* USER CODE END Callback 0 */
-  if (htim->Instance == TIM1) {
-    HAL_IncTick();
-  }
-  /* USER CODE BEGIN Callback 1 */
+/* USER CODE END Callback 0 */
+if (htim->Instance == TIM1) {
+  HAL_IncTick();
+}
+/* USER CODE BEGIN Callback 1 */
 
-  /* USER CODE END Callback 1 */
+/* USER CODE END Callback 1 */
 }
 
 /**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
-void Error_Handler(void)
-{
-  /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
-  /* USER CODE END Error_Handler_Debug */
+ * @brief  This function is executed in case of error occurrence.
+ * @retval None
+ */
+void Error_Handler(void) {
+/* USER CODE BEGIN Error_Handler_Debug */
+/* User can add his own implementation to report the HAL error return state */
+__disable_irq();
+while (1) {
+}
+/* USER CODE END Error_Handler_Debug */
 }
 
 #ifdef  USE_FULL_ASSERT
