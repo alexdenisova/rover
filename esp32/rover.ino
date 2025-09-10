@@ -1,5 +1,4 @@
 #include <WiFi.h>
-#include <HTTPClient.h>
 #include <my_secrets.h>
 
 const char* SSID = SECRET_SSID;
@@ -11,12 +10,14 @@ const String SERVER_NAME = "transcribe.alexdenisova.ru";
 const uint16_t SERVER_PORT = 80;
 const String HTTP_PATH = "/transcribe";
 
-// Buffer for file data (adjust based on your ESP32's available RAM)
-const size_t BUFFER_SIZE = 8192;  // 2KB chunks
+// Buffer for file data
+const size_t BUFFER_SIZE = 8192;  // 8KB chunks
 uint8_t fileBuffer[BUFFER_SIZE];
 
 #define HTTP_TIMEOUT 10000                // 10 second timeout for HTTP request/response
 const String FORM_BOUNDARY = "boundary";  // the multipart/form-data boundary
+
+WiFiClient client;
 
 void setup() {
   Serial.setRxBufferSize(20000);
@@ -34,44 +35,51 @@ void setup() {
 }
 
 void loop() {
+  // Expecting data stream with format "<file size>\n<file bytes>"
   if (Serial.available() > 0) {
-    // Read and send the file
-    readAndSendFile();
+    uint32_t file_size = readFileSize();
+    if ((file_size != 0) && readAndSendFile(file_size)) {
+      awaitResponse();
+    }
 
-    // Clear any remaining serial data
+    // Clear RX buffer to wait for new file
     while (Serial.available()) {
       Serial.read();
     }
   }
 
-  delay(1000);
+  delay(1);
 }
 
-// Expects data stream with format "<file size>\n<file bytes>"
-void readAndSendFile() {
-  WiFiClient client;
-
-  // Receiving file size
+// Get file size from RX
+uint32_t readFileSize() {
   uint32_t file_size = 0;
   while (Serial.available() > 0) {
     char data = Serial.read();
     if (data != '\n') {
       if (data < '0' || '9' < data) {
         Serial.println("Error: Expected format '<file size>\n<file bytes>'");
-        return;
+        return 0;
       }
       file_size = file_size * 10 + data - '0';
     } else {
       // Finished receiving file size
-      break;
+      return file_size;
     }
   }
+  return 0;
+}
 
+
+// Reads file from RX and sends it to server
+// Returns 'true' if successfully sent HTTP request
+bool readAndSendFile(uint32_t file_size) {
   // Connect to server
   client.connect(SERVER_NAME.c_str(), SERVER_PORT);
   if (!client.connected()) {
+    // Send connection error to STM32
     Serial.println("Error: Could not connect to server");
-    return;
+    return false;
   }
 
   // Send HTTP request with headers
@@ -86,7 +94,7 @@ void readAndSendFile() {
   client.println();
   client.print(header);
 
-  // Read from Serial and send in chunks
+  // Read file bytes from RX and send it to server in chunks
   unsigned long uploadStart = millis();
   size_t totalSent = 0;
   while (totalSent < file_size) {
@@ -98,29 +106,28 @@ void readAndSendFile() {
         client.write(fileBuffer, bytesRead);
         totalSent += bytesRead;
 
-        // Progress update
-        if (totalSent % 5120 == 0) {  // Every 5KB TODO
-          float progress = (totalSent * 100.0) / file_size;
-          Serial.printf("Uploaded: %d/%d bytes (%.1f%%)\n", totalSent, file_size, progress);
-        } else if (totalSent == file_size) {
-          Serial.printf("Uploaded: %d/%d bytes (100%%)\n", totalSent, file_size);
+        if (totalSent == file_size) {
           break;
         }
       }
     }
-    delay(1);
 
     // Check for timeout
     if (millis() - uploadStart > HTTP_TIMEOUT) {
+      // Send upload error to STM32
       Serial.println("Error: Upload timeout");
-      return;
+      return false;
     }
+    delay(1);
   }
 
   // Send multipart body footer
   client.print(footer);
+  return true;
+}
 
-  // Wait for response
+// Waits for response from server
+void awaitResponse() {
   int statusCode;
   String responseBody;
   unsigned long responseStart = millis();
@@ -129,10 +136,10 @@ void readAndSendFile() {
       responseBody.trim();
       responseBody.toLowerCase();
       if (statusCode >= 200 && statusCode < 300) {
-        // Send response body
+        // Send response body to STM32
         Serial.println("Success: " + responseBody);
       } else {
-        // Send HTTP error
+        // Send HTTP error to STM32
         Serial.printf("Error: Status: %d, Body: %s\n", statusCode, responseBody.c_str());
       }
       client.stop();
@@ -141,14 +148,14 @@ void readAndSendFile() {
     delay(10);
   }
 
-  // Send timeout error
+  // Send timeout error to STM32
   Serial.println("Error: Timed out waiting for response");
   client.stop();
   return;
 }
 
 // Parses the HTTP status code and response body
-// Returns true if successfully parsed response
+// Returns 'true' if successfully parsed response
 bool parseHttpResponse(WiFiClient& client, int& statusCode, String& responseBody) {
   statusCode = 0;
   responseBody = "";
@@ -203,6 +210,5 @@ bool parseHttpResponse(WiFiClient& client, int& statusCode, String& responseBody
       responseBody += (char)client.read();
     }
   }
-
   return true;
 }
