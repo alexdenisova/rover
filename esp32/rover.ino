@@ -1,271 +1,214 @@
-#include "WiFi.h"
-#include "HTTPClient.h"
-#include "FS.h"
-#include "SD.h"
-#include "SPI.h"
-#include <string.h>
-#include <my_secrets.h>  // Library with SECRET_SSID, SECRET_WIFI_PASSWORD
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <my_secrets.h>
 
-// Inserting Wifi creds
-const char* SSID = SECRET_SSID;
-const char* WIFI_PASSWORD = SECRET_WIFI_PASSWORD;
-const IPAddress DNS_SERVER(192, 168, 0, 202);
+// const char* SSID = SECRET_SSID;
+// const char* WIFI_PASSWORD = SECRET_WIFI_PASSWORD;
+const char* SSID = "motorola one 5G ace 1718";
+const char* WIFI_PASSWORD = "qwerty45";
+const char* serverURL = "http://transcribe.alexdenisova.ru/transcribe";
 
 // HTTP server config:
 const String SERVER_NAME = "transcribe.alexdenisova.ru";
 const uint16_t SERVER_PORT = 80;
 const String HTTP_PATH = "/transcribe";
 
-#define FIFO_SIZE 50000   // Size of the FreeRTOS Queue
-#define BUFFER_SIZE 2000  // Size of buffer for the WiFiClient
-QueueHandle_t fifoQueue = xQueueCreate(FIFO_SIZE, sizeof(char));
-TaskHandle_t Task1;
-TaskHandle_t Task2;
+// Buffer for file data (adjust based on your ESP32's available RAM)
+const size_t BUFFER_SIZE = 8192;  // 2KB chunks
+uint8_t fileBuffer[BUFFER_SIZE];
 
-#define HTTP_TIMEOUT 10000                // 10 second timeout for HTTP response
 const String FORM_BOUNDARY = "boundary";  // the multipart/form-data boundary
 
 void setup() {
+  Serial.setRxBufferSize(20000);
   Serial.begin(250000);
-  Serial.setRxBufferSize(1024);
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(SSID, WIFI_PASSWORD);
-  Serial.print("Connecting");
+
+  Serial.println("Connecting to WiFi...");
   while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
     delay(500);
+    Serial.print(".");
   }
-  WiFi.setDNS(DNS_SERVER);
-  Serial.printf("\nConnected to WiFi network with IP Address: ");
-  Serial.println(WiFi.localIP());
+  Serial.println("\nConnected to WiFi!");
 
-  // TaskReadSerial executed on core 0
-  xTaskCreatePinnedToCore(
-    vTaskReadSerial,  /* Task function. */
-    "TaskReadSerial", /* name of task. */
-    10000,            /* Stack size of task */
-    NULL,             /* parameter of the task */
-    1,                /* priority of the task */
-    &Task1,           /* Task handle to keep track of created task */
-    0);               /* pin task to core 0 */
-  delay(500);
-
-  // TaskHTTPRequest executed on core 1
-  xTaskCreatePinnedToCore(
-    vTaskHTTPRequest,  /* Task function. */
-    "TaskHTTPRequest", /* name of task. */
-    50000,             /* Stack size of task */
-    NULL,              /* parameter of the task */
-    1,                 /* priority of the task */
-    &Task2,            /* Task handle to keep track of created task */
-    1);                /* pin task to core 1 */
-  delay(500);
+  // WiFiClient client;
+  // get(client);
 }
 
 void loop() {
-}
-
-
-// Read from Serial and write to fifoQueue
-void vTaskReadSerial(void* pvParameters) {
-  const TickType_t xDelay = 1 / portTICK_PERIOD_MS;
-  for (;;) {
-    while (Serial.available() > 0) {
-      char data = Serial.read();
-      xQueueSend(fifoQueue, &data, portMAX_DELAY);
+  if (Serial.available() > 0) {
+    // Read and send the file
+    if (readAndSendFile()) {
+      Serial.println("File sent successfully!");
+    } else {
+      Serial.println("File transfer failed!");
     }
-    vTaskDelay(xDelay);
-  }
-}
 
-// Read from fifoQueue and send HTTP Request
-void vTaskHTTPRequest(void* pvParameters) {
-  const TickType_t xDelay = 1 / portTICK_PERIOD_MS;
-
-  WiFiClient client;
-
-  char data;
-  char buffer[BUFFER_SIZE + 1];
-  memset(buffer, '\0', sizeof(buffer));
-  uint32_t buffer_idx = 0;
-
-  bool receiving_file_size = true;
-  bool started_request = false;
-  uint32_t file_size = 0;
-  uint32_t bytes_sent = 0;
-  for (;;) {
-    while (xQueueReceive(fifoQueue, &data, 0)) {
-      // Expecting data stream with format "<file size>\n<file bytes>"
-      if (receiving_file_size) {
-        if (data != '\n') {
-          file_size = file_size * 10 + data - '0';
-        } else {
-          // Finished receiving file size
-          receiving_file_size = false;
-          // Start POST request (needs file size to determine Content-Length)
-          started_request = startPostRequest(client, file_size);
-        }
-        continue;
-      }
-
-      // If startPostRequest failed, then we need to just empty the Queue
-      if (!started_request) {
-        bytes_sent++;
-        // If startPostRequest succeeded, then we read Queue and send file bytes to HTTP server
-      } else if (bytes_sent < file_size) {
-        // Since '\0' is read as end-of-string by client.print(), it needs to be sent as a seperate char
-        if (data == '\0') {
-          sendBuffer(client, buffer, sizeof(buffer), buffer_idx, bytes_sent);
-          client.print(data);  // Send '\0' byte
-          bytes_sent++;
-        } else {
-          buffer[buffer_idx++] = data;
-          // sendBuffer if it is full or if the last byte of the file has been read
-          if ((buffer_idx == BUFFER_SIZE) || (bytes_sent + buffer_idx == file_size)) {
-            sendBuffer(client, buffer, sizeof(buffer), buffer_idx, bytes_sent);
-          }
-        }
-      }
-
-      if (bytes_sent == file_size) {
-        if (started_request) {
-          // End the POST request and parse response
-          endPostRequest(client);
-          awaitResponse(client);
-        }
-        // Return to initial state
-        receiving_file_size = true;
-        file_size = 0;
-        bytes_sent = 0;
-      }
+    // Clear any remaining serial data
+    while (Serial.available()) {
+      Serial.read();
     }
-    vTaskDelay(xDelay);
   }
+
+  delay(1000);
 }
 
-// Send the bytes in buffer to server, then clear buffer
-void sendBuffer(WiFiClient& client, char buffer[], size_t buffer_size, uint32_t& buffer_idx, uint32_t& bytes_sent) {
-  client.print(buffer);
-  bytes_sent += strlen(buffer);
-  memset(buffer, '\0', buffer_size);
-  buffer_idx = 0;
-}
-
-// Starts the POST request, sends headers and beginning of multipart/form-data body
-// Returns true if successfully started POST request
-bool startPostRequest(WiFiClient& client, uint32_t file_size) {
-  if (client.connect(SERVER_NAME.c_str(), SERVER_PORT)) {
+void get(WiFiClient& client) {
+  if (client.connect(SERVER_NAME.c_str(), 80, 100000)) {
     if (client.connected()) {
-      client.println("POST " + HTTP_PATH + " HTTP/1.1");
+      client.println("GET /health HTTP/1.1");
       client.println("Host: " + SERVER_NAME);
-
-      String head = "--" + FORM_BOUNDARY + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.WAV\"\r\nContent-Type: application/octet-stream\r\n\r\n";
-      String tail = "\r\n--" + FORM_BOUNDARY + "--\r\n";
-      uint32_t contentLength = head.length() + tail.length() + file_size;
-
-      client.println("Content-Type: multipart/form-data; boundary=" + FORM_BOUNDARY);
-      client.println("Content-Length: " + String(contentLength));
-      client.println();
-      client.print(head);
-      return true;
+      client.println("");
     }
   }
-  Serial.println("Error: Could not connect to server");
-  return false;
-}
-
-// Sends the end of the multipart/form-data body
-void endPostRequest(WiFiClient& client) {
-  client.print("\r\n--" + FORM_BOUNDARY + "--\r\n");
-  return;
-}
-
-// Waits for HTTP response and prints it to Serial
-void awaitResponse(WiFiClient& client) {
-  int statusCode;
-  String responseBody;
-
-  // Wait for response until timeout
   unsigned long startTime = millis();
-  while ((millis() - startTime < HTTP_TIMEOUT)) {
-    if (parseHttpResponse(client, statusCode, responseBody)) {
-      responseBody.trim();
-      responseBody.toLowerCase();
-      if (statusCode >= 200 && statusCode < 300) {
-        // Send response body
-        Serial.println("Success: " + responseBody);
-      } else {
-        // Send HTTP error
-        Serial.printf("Error: Status: %d, Body: %s\n", statusCode, responseBody.c_str());
-      }
-      client.stop();
-      return;
+  unsigned long httpResponseTimeOut = 10000;  // 10 seconds timeout
+  while ((millis() - startTime < httpResponseTimeOut)) {
+    while (client.available()) {
+      char c = client.read();
+      Serial.print(c);
     }
     delay(10);
   }
-  // Send timeout error
-  Serial.println("Error: Timed out waiting for response");
+  Serial.println("done");
   client.stop();
-  return;
 }
 
-// Parses the HTTP status code and response body
-// Returns true if successfully parsed response
-bool parseHttpResponse(WiFiClient& client, int& statusCode, String& responseBody) {
-  statusCode = 0;
-  responseBody = "";
 
-  if (!client.connected() || !client.available()) {
+
+bool readAndSendFile() {
+  HTTPClient http;
+  WiFiClient client;
+
+  // Finished receiving file size
+  uint32_t file_size = 0;
+  while (Serial.available() > 0) {
+    char data = Serial.read();
+    if (data != '\n') {
+      file_size = file_size * 10 + data - '0';
+    } else {
+      // Finished receiving file size
+      break;
+    }
+  }
+  unsigned long start = millis();
+
+  // Start HTTP connection
+  // http.begin(client, serverURL);
+  client.connect(SERVER_NAME.c_str(), SERVER_PORT);
+  if (!client.connected()) {
+    Serial.println("Error: Could not connect to server");
     return false;
   }
 
-  // Read status line
-  String statusLine = client.readStringUntil('\n');
-  if (statusLine.length() == 0) {
-    return false;
-  }
+  String head = "--" + FORM_BOUNDARY + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.WAV\"\r\nContent-Type: application/octet-stream\r\n\r\n";
+  String tail = "\r\n--" + FORM_BOUNDARY + "--\r\n";
+  uint32_t contentLength = head.length() + tail.length() + file_size;
+  client.println("POST " + HTTP_PATH + " HTTP/1.1");
+  client.println("Host: " + SERVER_NAME);
+  client.println("Content-Type: multipart/form-data; boundary=" + FORM_BOUNDARY);
+  client.println("Content-Length: " + String(contentLength));
+  client.println();
+  client.print(head);
 
-  // Parse status code
-  int firstSpace = statusLine.indexOf(' ');
-  int secondSpace = statusLine.indexOf(' ', firstSpace + 1);
-  if (firstSpace == -1 || secondSpace == -1) {
-    return false;
-  }
+  // // Create the multipart request body in chunks
+  // String boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW";
+  // String header = "--" + boundary + "\r\n";
+  // header += "Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n";
+  // header += "Content-Type: application/octet-stream\r\n\r\n";
 
-  statusCode = statusLine.substring(firstSpace + 1, secondSpace).toInt();
+  // String footer = "\r\n--" + boundary + "--\r\n";
 
-  // Read headers
-  int contentLength = -1;
-  while (client.available()) {
-    String line = client.readStringUntil('\n');
-    line.trim();
+  // // Calculate total content length
+  // int contentLength = header.length() + file_size + footer.length();
 
-    if (line.length() == 0) {
-      break;  // End of headers
+  // // Start POST request
+  // if (!http.connect()) {
+  //   Serial.println("Failed to connect to server");
+  //   http.end();
+  //   return false;
+  // }
+
+  // Send headers
+  // client.print("POST ");
+  // client.print("/transcribe");
+  // client.println(" HTTP/1.1");
+  // client.print("Host: ");
+  // client.println("transcribe.alexdenisova.ru");
+  // client.println("Connection: close");
+  // client.print("Content-Type: multipart/form-data; boundary=");
+  // client.println(boundary);
+  // client.print("Content-Length: ");
+  // client.println(contentLength);
+  // client.println();
+
+  // Send multipart header
+  // client.print(header);
+
+  // Read from Serial and send in chunks
+  unsigned long startTime = millis();
+  size_t totalSent = 0;
+
+  while (totalSent < file_size) {
+    if (Serial.available() > 0) {
+      size_t toRead = min(int(BUFFER_SIZE), int(file_size - totalSent));
+      size_t bytesRead = Serial.readBytes(fileBuffer, toRead);
+      // Serial.printf("%d %d\n", totalSent, bytesRead);
+
+      if (bytesRead > 0) {
+        client.write(fileBuffer, bytesRead);
+        totalSent += bytesRead;
+
+        // Progress update
+        if (totalSent % 5120 == 0) {  // Every 5KB
+          float progress = (totalSent * 100.0) / file_size;
+          Serial.printf("Uploaded: %d/%d bytes (%.1f%%)\n", totalSent, file_size, progress);
+        } else if (totalSent == file_size) {
+          Serial.printf("Uploaded: %d/%d bytes (100%%)\n", totalSent, file_size);
+          break;
+        }
+      }
     }
+    delay(1);
 
-    if (line.startsWith("Content-Length:")) {
-      int colonPos = line.indexOf(':');
-      contentLength = line.substring(colonPos + 1).toInt();
+    // Check for timeout
+    if (millis() - startTime > 10000) {  // 2 minute timeout
+      Serial.println("Upload timeout");
+      http.end();
+      return false;
     }
   }
 
-  // Read body
-  if (contentLength == 0) {
-    return true;
-  } else if (contentLength > 0) {
-    // Read exact number of bytes
-    char buffer[contentLength + 1];
-    int bytesRead = client.readBytes(buffer, contentLength);
-    buffer[bytesRead] = '\0';
-    responseBody = String(buffer);
-  } else {
-    // Read until connection closes
-    while (client.available()) {
-      responseBody += (char)client.read();
+  client.print("\r\n--" + FORM_BOUNDARY + "--\r\n");
+
+  // Send multipart footer
+  // client.print(footer);
+  // client.flush();
+
+  // Wait for response
+  unsigned long responseTimeout = millis();
+  while (millis() - responseTimeout < 10000) {
+    if (client.available()) {
+      // Read response
+      String response;
+      while (client.available()) {
+        response += client.readString();
+      }
+
+      Serial.println("Server response:");
+      Serial.println(response);
+
+      // Check if response contains success code
+      bool success = (response.indexOf("200 OK") != -1) || (response.indexOf("201 Created") != -1) || (response.indexOf("HTTP/1.1 2") != -1);
+
+      http.end();
+      return success;
     }
+    delay(10);
   }
 
-  return true;
+  Serial.println("Timed out waiting for response");
+  return false;
 }
