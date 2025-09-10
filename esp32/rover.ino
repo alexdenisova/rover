@@ -2,10 +2,8 @@
 #include <HTTPClient.h>
 #include <my_secrets.h>
 
-// const char* SSID = SECRET_SSID;
-// const char* WIFI_PASSWORD = SECRET_WIFI_PASSWORD;
-const char* SSID = "motorola one 5G ace 1718";
-const char* WIFI_PASSWORD = "qwerty45";
+const char* SSID = SECRET_SSID;
+const char* WIFI_PASSWORD = SECRET_WIFI_PASSWORD;
 const char* serverURL = "http://transcribe.alexdenisova.ru/transcribe";
 
 // HTTP server config:
@@ -17,6 +15,7 @@ const String HTTP_PATH = "/transcribe";
 const size_t BUFFER_SIZE = 8192;  // 2KB chunks
 uint8_t fileBuffer[BUFFER_SIZE];
 
+#define HTTP_TIMEOUT 10000                // 10 second timeout for HTTP request/response
 const String FORM_BOUNDARY = "boundary";  // the multipart/form-data boundary
 
 void setup() {
@@ -32,19 +31,12 @@ void setup() {
     Serial.print(".");
   }
   Serial.println("\nConnected to WiFi!");
-
-  // WiFiClient client;
-  // get(client);
 }
 
 void loop() {
   if (Serial.available() > 0) {
     // Read and send the file
-    if (readAndSendFile()) {
-      Serial.println("File sent successfully!");
-    } else {
-      Serial.println("File transfer failed!");
-    }
+    readAndSendFile();
 
     // Clear any remaining serial data
     while (Serial.available()) {
@@ -55,31 +47,8 @@ void loop() {
   delay(1000);
 }
 
-void get(WiFiClient& client) {
-  if (client.connect(SERVER_NAME.c_str(), 80, 100000)) {
-    if (client.connected()) {
-      client.println("GET /health HTTP/1.1");
-      client.println("Host: " + SERVER_NAME);
-      client.println("");
-    }
-  }
-  unsigned long startTime = millis();
-  unsigned long httpResponseTimeOut = 10000;  // 10 seconds timeout
-  while ((millis() - startTime < httpResponseTimeOut)) {
-    while (client.available()) {
-      char c = client.read();
-      Serial.print(c);
-    }
-    delay(10);
-  }
-  Serial.println("done");
-  client.stop();
-}
-
-
 // Expects data stream with format "<file size>\n<file bytes>"
-bool readAndSendFile() {
-  HTTPClient http;
+void readAndSendFile() {
   WiFiClient client;
 
   // Receiving file size
@@ -87,19 +56,22 @@ bool readAndSendFile() {
   while (Serial.available() > 0) {
     char data = Serial.read();
     if (data != '\n') {
+      if (data < '0' || '9' < data) {
+        Serial.println("Error: Expected format '<file size>\n<file bytes>'");
+        return;
+      }
       file_size = file_size * 10 + data - '0';
     } else {
       // Finished receiving file size
       break;
     }
   }
-  unsigned long start = millis();
 
   // Connect to server
   client.connect(SERVER_NAME.c_str(), SERVER_PORT);
   if (!client.connected()) {
     Serial.println("Error: Could not connect to server");
-    return false;
+    return;
   }
 
   // Send HTTP request with headers
@@ -115,7 +87,7 @@ bool readAndSendFile() {
   client.print(header);
 
   // Read from Serial and send in chunks
-  unsigned long startTime = millis();
+  unsigned long uploadStart = millis();
   size_t totalSent = 0;
   while (totalSent < file_size) {
     if (Serial.available() > 0) {
@@ -127,7 +99,7 @@ bool readAndSendFile() {
         totalSent += bytesRead;
 
         // Progress update
-        if (totalSent % 5120 == 0) {  // Every 5KB
+        if (totalSent % 5120 == 0) {  // Every 5KB TODO
           float progress = (totalSent * 100.0) / file_size;
           Serial.printf("Uploaded: %d/%d bytes (%.1f%%)\n", totalSent, file_size, progress);
         } else if (totalSent == file_size) {
@@ -139,10 +111,9 @@ bool readAndSendFile() {
     delay(1);
 
     // Check for timeout
-    if (millis() - startTime > 10000) { // TODO
-      Serial.println("Upload timeout");
-      http.end();
-      return false;
+    if (millis() - uploadStart > HTTP_TIMEOUT) {
+      Serial.println("Error: Upload timeout");
+      return;
     }
   }
 
@@ -150,27 +121,88 @@ bool readAndSendFile() {
   client.print(footer);
 
   // Wait for response
-  unsigned long responseTimeout = millis();
-  while (millis() - responseTimeout < 10000) {
-    if (client.available()) {
-      // Read response
-      String response;
-      while (client.available()) {
-        response += client.readString();
+  int statusCode;
+  String responseBody;
+  unsigned long responseStart = millis();
+  while (millis() - responseStart < HTTP_TIMEOUT) {
+    if (parseHttpResponse(client, statusCode, responseBody)) {
+      responseBody.trim();
+      responseBody.toLowerCase();
+      if (statusCode >= 200 && statusCode < 300) {
+        // Send response body
+        Serial.println("Success: " + responseBody);
+      } else {
+        // Send HTTP error
+        Serial.printf("Error: Status: %d, Body: %s\n", statusCode, responseBody.c_str());
       }
-
-      Serial.println("Server response:");
-      Serial.println(response);
-
-      // Check if response contains success code
-      bool success = (response.indexOf("200 OK") != -1) || (response.indexOf("201 Created") != -1) || (response.indexOf("HTTP/1.1 2") != -1);
-
-      http.end();
-      return success;
+      client.stop();
+      return;
     }
     delay(10);
   }
 
-  Serial.println("Timed out waiting for response");
-  return false;
+  // Send timeout error
+  Serial.println("Error: Timed out waiting for response");
+  client.stop();
+  return;
+}
+
+// Parses the HTTP status code and response body
+// Returns true if successfully parsed response
+bool parseHttpResponse(WiFiClient& client, int& statusCode, String& responseBody) {
+  statusCode = 0;
+  responseBody = "";
+
+  if (!client.connected() || !client.available()) {
+    return false;
+  }
+
+  // Read status line
+  String statusLine = client.readStringUntil('\n');
+  if (statusLine.length() == 0) {
+    return false;
+  }
+
+  // Parse status code
+  int firstSpace = statusLine.indexOf(' ');
+  int secondSpace = statusLine.indexOf(' ', firstSpace + 1);
+  if (firstSpace == -1 || secondSpace == -1) {
+    return false;
+  }
+
+  statusCode = statusLine.substring(firstSpace + 1, secondSpace).toInt();
+
+  // Read headers
+  int contentLength = -1;
+  while (client.available()) {
+    String line = client.readStringUntil('\n');
+    line.trim();
+
+    if (line.length() == 0) {
+      break;  // End of headers
+    }
+
+    if (line.startsWith("Content-Length:")) {
+      int colonPos = line.indexOf(':');
+      contentLength = line.substring(colonPos + 1).toInt();
+    }
+  }
+
+  // Read body
+  if (contentLength == 0) {
+    return true;
+  } else if (contentLength > 0) {
+    // Read exact number of bytes
+    char buffer[contentLength + 1];
+    int bytesRead = client.readBytes(buffer, contentLength);
+    buffer[bytesRead] = '\0';
+    responseBody = String(buffer);
+  } else {
+    // Read until connection closes
+    while (client.available()) {
+      responseBody += (char)client.read();
+    }
+  }
+
+  return true;
 }
