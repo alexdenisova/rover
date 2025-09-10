@@ -77,12 +77,12 @@ void get(WiFiClient& client) {
 }
 
 
-
+// Expects data stream with format "<file size>\n<file bytes>"
 bool readAndSendFile() {
   HTTPClient http;
   WiFiClient client;
 
-  // Finished receiving file size
+  // Receiving file size
   uint32_t file_size = 0;
   while (Serial.available() > 0) {
     char data = Serial.read();
@@ -95,67 +95,32 @@ bool readAndSendFile() {
   }
   unsigned long start = millis();
 
-  // Start HTTP connection
-  // http.begin(client, serverURL);
+  // Connect to server
   client.connect(SERVER_NAME.c_str(), SERVER_PORT);
   if (!client.connected()) {
     Serial.println("Error: Could not connect to server");
     return false;
   }
 
-  String head = "--" + FORM_BOUNDARY + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.WAV\"\r\nContent-Type: application/octet-stream\r\n\r\n";
-  String tail = "\r\n--" + FORM_BOUNDARY + "--\r\n";
-  uint32_t contentLength = head.length() + tail.length() + file_size;
+  // Send HTTP request with headers
   client.println("POST " + HTTP_PATH + " HTTP/1.1");
   client.println("Host: " + SERVER_NAME);
   client.println("Content-Type: multipart/form-data; boundary=" + FORM_BOUNDARY);
+
+  String header = "--" + FORM_BOUNDARY + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.WAV\"\r\nContent-Type: application/octet-stream\r\n\r\n";
+  String footer = "\r\n--" + FORM_BOUNDARY + "--\r\n";
+  uint32_t contentLength = header.length() + footer.length() + file_size;
   client.println("Content-Length: " + String(contentLength));
   client.println();
-  client.print(head);
-
-  // // Create the multipart request body in chunks
-  // String boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW";
-  // String header = "--" + boundary + "\r\n";
-  // header += "Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n";
-  // header += "Content-Type: application/octet-stream\r\n\r\n";
-
-  // String footer = "\r\n--" + boundary + "--\r\n";
-
-  // // Calculate total content length
-  // int contentLength = header.length() + file_size + footer.length();
-
-  // // Start POST request
-  // if (!http.connect()) {
-  //   Serial.println("Failed to connect to server");
-  //   http.end();
-  //   return false;
-  // }
-
-  // Send headers
-  // client.print("POST ");
-  // client.print("/transcribe");
-  // client.println(" HTTP/1.1");
-  // client.print("Host: ");
-  // client.println("transcribe.alexdenisova.ru");
-  // client.println("Connection: close");
-  // client.print("Content-Type: multipart/form-data; boundary=");
-  // client.println(boundary);
-  // client.print("Content-Length: ");
-  // client.println(contentLength);
-  // client.println();
-
-  // Send multipart header
-  // client.print(header);
+  client.print(header);
 
   // Read from Serial and send in chunks
   unsigned long startTime = millis();
   size_t totalSent = 0;
-
   while (totalSent < file_size) {
     if (Serial.available() > 0) {
       size_t toRead = min(int(BUFFER_SIZE), int(file_size - totalSent));
       size_t bytesRead = Serial.readBytes(fileBuffer, toRead);
-      // Serial.printf("%d %d\n", totalSent, bytesRead);
 
       if (bytesRead > 0) {
         client.write(fileBuffer, bytesRead);
@@ -174,18 +139,15 @@ bool readAndSendFile() {
     delay(1);
 
     // Check for timeout
-    if (millis() - startTime > 10000) {  // 2 minute timeout
+    if (millis() - startTime > 10000) { // TODO
       Serial.println("Upload timeout");
       http.end();
       return false;
     }
   }
 
-  client.print("\r\n--" + FORM_BOUNDARY + "--\r\n");
-
-  // Send multipart footer
-  // client.print(footer);
-  // client.flush();
+  // Send multipart body footer
+  client.print(footer);
 
   // Wait for response
   unsigned long responseTimeout = millis();
