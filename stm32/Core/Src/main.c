@@ -32,27 +32,29 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+
 // WAV header structure
 typedef struct {
   // RIFF Header
-  char riff_header[4]; // Contains "RIFF"
-  uint32_t wav_size;   // Size of the wav portion of the file
-  char wave_header[4]; // Contains "WAVE"
+  char riff_header[4]; // Contains "RIFF". Marks the file as a riff file.
+  uint32_t wav_size;   // Size of the overall file
+  char wave_header[4]; // Contains "WAVE". File Type Header
 
   // Format Header
-  char fmt_header[4];      // Contains "fmt " (includes trailing space)
-  uint32_t fmt_chunk_size; // Should be 16 for PCM
-  uint16_t audio_format;   // Should be 1 for PCM
+  char fmt_header[4];       // Contains "fmt ". Format chunk marker. Includes trailing null
+  uint32_t fmt_chunk_size;  // Should be 16 for PCM
+  uint16_t audio_format;    // Should be 1 for PCM
   uint16_t num_channels;
   uint32_t sample_rate;
-  uint32_t byte_rate;   // sample_rate * num_channels * bytes_per_sample
-  uint16_t block_align; // num_channels * bytes_per_sample
-  uint16_t bits_per_sample;
+  uint32_t byte_rate;       //  (Sample Rate * BitsPerSample * Channels) / 8
+  uint16_t block_align;     // (BitsPerSample * Channels) / 8
+  uint16_t bits_per_sample; // Bits per sample
 
   // Data Header
-  char data_header[4]; // Contains "data"
-  uint32_t data_bytes; // Number of bytes in data
+  char data_header[4]; // Contains "data". Data chunk marker
+  uint32_t data_bytes; // Size of the data section
 } WavHeader;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -94,8 +96,6 @@ const uint16_t NUMBER_OF_CHANNELS = 1;
 const uint32_t DATA_SIZE = NUMBER_OF_SAMPLES * NUMBER_OF_CHANNELS
     * BITS_PER_SAMPLE / 8;
 const uint32_t FILE_SIZE = sizeof(WavHeader) + DATA_SIZE;
-
-char TxBuffer[250];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
