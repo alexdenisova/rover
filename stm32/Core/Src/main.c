@@ -194,7 +194,6 @@ int main(void) {
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start(&htim3);
-  Set_GPIO_Tmp(Rover_Forward_GPIO_Port, Rover_Forward_Pin, 500);
   /* USER CODE END 2 */
 
   /* Create the mutex(es) */
