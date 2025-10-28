@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "speech-to-text"
-version = "25.9.5"
+version = "25.10.0"
 description = "A Speech-to-Text API based on OpenAI Whisper"
 authors = ["Alex Denisova <alexadenisova@gmail.com>"]
 readme = "README.md"
