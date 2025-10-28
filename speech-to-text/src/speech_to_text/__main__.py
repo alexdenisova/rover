@@ -55,7 +55,6 @@ def combining_chunks(final_path: Path, chunks_dir: str):
 
 @app.post("/transcribe")
 async def transcribe(file: UploadFile, content_range: str = Header(None)):
-    logging.info("transribe")
     try:
         if content_range:
             # Handle chunked upload

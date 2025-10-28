@@ -57,24 +57,30 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define LED_Pin GPIO_PIN_0
-#define LED_GPIO_Port GPIOC
+#define Recording_LED_Pin GPIO_PIN_0
+#define Recording_LED_GPIO_Port GPIOC
 #define USART_TX_Pin GPIO_PIN_2
 #define USART_TX_GPIO_Port GPIOA
 #define USART_RX_Pin GPIO_PIN_3
 #define USART_RX_GPIO_Port GPIOA
-#define LD2_Pin GPIO_PIN_5
-#define LD2_GPIO_Port GPIOA
-#define Forward_Pin GPIO_PIN_0
-#define Forward_GPIO_Port GPIOB
-#define SD_CS_Pin GPIO_PIN_12
+#define SD_CS_Pin GPIO_PIN_1
 #define SD_CS_GPIO_Port GPIOB
 #define TMS_Pin GPIO_PIN_13
 #define TMS_GPIO_Port GPIOA
 #define TCK_Pin GPIO_PIN_14
 #define TCK_GPIO_Port GPIOA
-#define SWO_Pin GPIO_PIN_3
-#define SWO_GPIO_Port GPIOB
+#define Rover_Open_Pin GPIO_PIN_11
+#define Rover_Open_GPIO_Port GPIOC
+#define Rover_Close_Pin GPIO_PIN_12
+#define Rover_Close_GPIO_Port GPIOC
+#define Rover_Forward_Pin GPIO_PIN_4
+#define Rover_Forward_GPIO_Port GPIOB
+#define Rover_Backward_Pin GPIO_PIN_5
+#define Rover_Backward_GPIO_Port GPIOB
+#define Rover_Right_Pin GPIO_PIN_6
+#define Rover_Right_GPIO_Port GPIOB
+#define Rover_Left_Pin GPIO_PIN_7
+#define Rover_Left_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 
