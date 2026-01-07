@@ -57,14 +57,25 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define Recording_Button_Pin GPIO_PIN_13
+#define Recording_Button_GPIO_Port GPIOC
+#define Recording_Button_EXTI_IRQn EXTI15_10_IRQn
 #define Recording_LED_Pin GPIO_PIN_0
 #define Recording_LED_GPIO_Port GPIOC
+#define SD_MISO_Pin GPIO_PIN_2
+#define SD_MISO_GPIO_Port GPIOC
+#define SD_MOSI_Pin GPIO_PIN_3
+#define SD_MOSI_GPIO_Port GPIOC
 #define USART_TX_Pin GPIO_PIN_2
 #define USART_TX_GPIO_Port GPIOA
 #define USART_RX_Pin GPIO_PIN_3
 #define USART_RX_GPIO_Port GPIOA
+#define Recording_Output_Pin GPIO_PIN_0
+#define Recording_Output_GPIO_Port GPIOB
 #define SD_CS_Pin GPIO_PIN_1
 #define SD_CS_GPIO_Port GPIOB
+#define SD_SCK_Pin GPIO_PIN_10
+#define SD_SCK_GPIO_Port GPIOB
 #define TMS_Pin GPIO_PIN_13
 #define TMS_GPIO_Port GPIOA
 #define TCK_Pin GPIO_PIN_14

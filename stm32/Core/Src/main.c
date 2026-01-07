@@ -156,6 +156,12 @@ static void UART_Transmit_Buffer_ESP32(int16_t *buffer, uint16_t buffer_idx) {
 static void UART_Receive_ESP32() {
   HAL_UARTEx_ReceiveToIdle_IT(&huart1, (uint8_t*) uart_rx, UART_RX_BUFFER_SIZE);
 }
+
+void Set_GPIO_T(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, uint32_t time_ms) {
+HAL_GPIO_WritePin(GPIOx, GPIO_Pin, GPIO_PIN_SET);
+HAL_Delay(time_ms);
+HAL_GPIO_WritePin(GPIOx, GPIO_Pin, GPIO_PIN_RESET);
+}
 /* USER CODE END 0 */
 
 /**
@@ -332,7 +338,7 @@ static void MX_ADC1_Init(void) {
 
   /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
    */
-  sConfig.Channel = ADC_CHANNEL_0;
+  sConfig.Channel = ADC_CHANNEL_8;
   sConfig.Rank = 1;
   sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
@@ -523,11 +529,11 @@ static void MX_GPIO_Init(void) {
       SD_CS_Pin | Rover_Forward_Pin | Rover_Backward_Pin | Rover_Right_Pin
           | Rover_Left_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : PC13 */
-  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  /*Configure GPIO pin : Recording_Button_Pin */
+  GPIO_InitStruct.Pin = Recording_Button_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  HAL_GPIO_Init(Recording_Button_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : Recording_LED_Pin Rover_Open_Pin Rover_Close_Pin */
   GPIO_InitStruct.Pin = Recording_LED_Pin | Rover_Open_Pin | Rover_Close_Pin;
@@ -622,7 +628,7 @@ void Write_WAV_Header() {
   header.data_bytes = DATA_SIZE;
 
   // Send header to ESP32
-  UART_Transmit_ESP32(&header);
+UART_Transmit_ESP32(&header);
 }
 
 /**
@@ -630,9 +636,9 @@ void Write_WAV_Header() {
  * @retval None
  */
 void Set_GPIO_Tmp(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, uint32_t time_ms) {
-  HAL_GPIO_WritePin(GPIOx, GPIO_Pin, GPIO_PIN_SET);
-  osDelay(time_ms);
-  HAL_GPIO_WritePin(GPIOx, GPIO_Pin, GPIO_PIN_RESET);
+HAL_GPIO_WritePin(GPIOx, GPIO_Pin, GPIO_PIN_SET);
+osDelay(time_ms);
+HAL_GPIO_WritePin(GPIOx, GPIO_Pin, GPIO_PIN_RESET);
 }
 /* USER CODE END 4 */
 
@@ -644,53 +650,53 @@ void Set_GPIO_Tmp(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, uint32_t time_ms) {
  */
 /* USER CODE END Header_vAudioTask */
 void vAudioTask(void const *argument) {
-  /* USER CODE BEGIN 5 */
-  const TickType_t xDelay = 1 / portTICK_PERIOD_MS;
+/* USER CODE BEGIN 5 */
+const TickType_t xDelay = 1 / portTICK_PERIOD_MS;
 
-  int16_t data_buffer[DATA_BUFFER_SIZE];
-  uint16_t buffer_idx = 0;
-  bool sending_file = false; // Resets after the file has been sent
-  uint32_t data_sent = 0; // Number of bytes from data batch sent to ESP32
+int16_t data_buffer[DATA_BUFFER_SIZE];
+uint16_t buffer_idx = 0;
+bool sending_file = false; // Resets after the file has been sent
+uint32_t data_sent = 0; // Number of bytes from data batch sent to ESP32
 
-  /* Infinite loop */
-  for (;;) {
-    EventBits_t uxBits = xEventGroupGetBits(buttonEventHandle);
-    if ((uxBits & BIT_0) != 0) {
-      if (!sending_file) {
-        // Transmit file size
-        char uart_buffer[20];
-        sprintf(uart_buffer, "%lu\n", FILE_SIZE);
-        UART_Transmit_ESP32(uart_buffer);
-        // Transmit header of WAV file
-        Write_WAV_Header();
-        sending_file = true;
-      }
-      int16_t data;
-      while (xQueueReceive(audioQueueHandle, &data, 0)) {
-        data_buffer[buffer_idx++] = data;
-        UBaseType_t data_left = uxQueueMessagesWaitingFromISR(audioQueueHandle);
+/* Infinite loop */
+for (;;) {
+  EventBits_t uxBits = xEventGroupGetBits(buttonEventHandle);
+  if ((uxBits & BIT_0) != 0) {
+    if (!sending_file) {
+      // Transmit file size
+      char uart_buffer[20];
+      sprintf(uart_buffer, "%lu\n", FILE_SIZE);
+      UART_Transmit_ESP32(uart_buffer);
+      // Transmit header of WAV file
+      Write_WAV_Header();
+      sending_file = true;
+    }
+    int16_t data;
+    while (xQueueReceive(audioQueueHandle, &data, 0)) {
+      data_buffer[buffer_idx++] = data;
+      UBaseType_t data_left = uxQueueMessagesWaitingFromISR(audioQueueHandle);
 
-        if ((buffer_idx == DATA_BUFFER_SIZE) || (data_left == 0)) {
-          // If buffer is full or there is no more data left in queue, then send buffer contents to ESP32
-          UART_Transmit_Buffer_ESP32(data_buffer, buffer_idx);
-          data_sent += buffer_idx;
-          // Empty buffer
-          memset(data_buffer, '\0', sizeof(data_buffer));
-          buffer_idx = 0;
-        }
-      }
-      if (data_sent == NUMBER_OF_SAMPLES) {
-        UART_Log("WAV file sent successfully\n");
-        UART_Receive_ESP32();
-        // Return to initial state
-        xEventGroupClearBits(buttonEventHandle, BIT_0);
-        data_sent = 0;
-        sending_file = false;
+      if ((buffer_idx == DATA_BUFFER_SIZE) || (data_left == 0)) {
+        // If buffer is full or there is no more data left in queue, then send buffer contents to ESP32
+        UART_Transmit_Buffer_ESP32(data_buffer, buffer_idx);
+        data_sent += buffer_idx;
+        // Empty buffer
+        memset(data_buffer, '\0', sizeof(data_buffer));
+        buffer_idx = 0;
       }
     }
-    osDelay(xDelay * 1000);
+    if (data_sent == NUMBER_OF_SAMPLES) {
+      UART_Log("WAV file sent successfully\n");
+      UART_Receive_ESP32();
+      // Return to initial state
+      xEventGroupClearBits(buttonEventHandle, BIT_0);
+      data_sent = 0;
+      sending_file = false;
+    }
   }
-  /* USER CODE END 5 */
+  osDelay(xDelay * 1000);
+}
+/* USER CODE END 5 */
 }
 
 /* USER CODE BEGIN Header_vUartParseTask */
@@ -701,49 +707,49 @@ void vAudioTask(void const *argument) {
  */
 /* USER CODE END Header_vUartParseTask */
 void vUartParseTask(void const *argument) {
-  /* USER CODE BEGIN vUartParseTask */
-  /* Infinite loop */
-  for (;;) {
-    if (received_uart_rx) {
-      // If received error message
-      if (strncmp(uart_rx, "Error:", strlen("Error:")) == 0) {
-        UART_Log(uart_rx);
-      } else {
-        // Trim "Success: " from message
-        size_t l = strlen("Success: ");
-        char *transcription =
-            strncmp(uart_rx, "Success: ", l) ? uart_rx : uart_rx + l;
-        // Make message lowercase
-        for (int i = 0; transcription[i]; i++) {
-          transcription[i] = tolower(transcription[i]);
-        }
-
-        xSemaphoreTake(commandMutexHandle, portMAX_DELAY);
-        if (strstr(transcription, "forward") != NULL) {
-          command = ROVER_FORWARD;
-        } else if (strstr(transcription, "backward") != NULL) {
-          command = ROVER_BACKWARD;
-        } else if (strstr(transcription, "right") != NULL) {
-          command = ROVER_RIGHT;
-        } else if (strstr(transcription, "left") != NULL) {
-          command = ROVER_LEFT;
-        } else if (strstr(transcription, "spin") != NULL) {
-          command = ROVER_SPIN;
-        } else if (strstr(transcription, "open") != NULL) {
-          command = ROVER_OPEN;
-        } else if (strstr(transcription, "close") != NULL) {
-          command = ROVER_CLOSE;
-        } else {
-          UART_Log("No instructions detected. Transcription: ");
-          UART_Log(transcription);
-        }
-        xSemaphoreGive(commandMutexHandle);
+/* USER CODE BEGIN vUartParseTask */
+/* Infinite loop */
+for (;;) {
+  if (received_uart_rx) {
+    // If received error message
+    if (strncmp(uart_rx, "Error:", strlen("Error:")) == 0) {
+      UART_Log(uart_rx);
+    } else {
+      // Trim "Success: " from message
+      size_t l = strlen("Success: ");
+      char *transcription =
+          strncmp(uart_rx, "Success: ", l) ? uart_rx : uart_rx + l;
+      // Make message lowercase
+      for (int i = 0; transcription[i]; i++) {
+        transcription[i] = tolower(transcription[i]);
       }
-      received_uart_rx = false;
+
+      xSemaphoreTake(commandMutexHandle, portMAX_DELAY);
+      if (strstr(transcription, "forward") != NULL) {
+        command = ROVER_FORWARD;
+      } else if (strstr(transcription, "backward") != NULL) {
+        command = ROVER_BACKWARD;
+      } else if (strstr(transcription, "right") != NULL) {
+        command = ROVER_RIGHT;
+      } else if (strstr(transcription, "left") != NULL) {
+        command = ROVER_LEFT;
+      } else if (strstr(transcription, "spin") != NULL) {
+        command = ROVER_SPIN;
+      } else if (strstr(transcription, "open") != NULL) {
+        command = ROVER_OPEN;
+      } else if (strstr(transcription, "close") != NULL) {
+        command = ROVER_CLOSE;
+      } else {
+        UART_Log("No instructions detected. Transcription: ");
+        UART_Log(transcription);
+      }
+      xSemaphoreGive(commandMutexHandle);
     }
-    osDelay(1);
+    received_uart_rx = false;
   }
-  /* USER CODE END vUartParseTask */
+  osDelay(1);
+}
+/* USER CODE END vUartParseTask */
 }
 
 /* USER CODE BEGIN Header_vRoverTask */
@@ -754,51 +760,52 @@ void vUartParseTask(void const *argument) {
  */
 /* USER CODE END Header_vRoverTask */
 void vRoverTask(void const *argument) {
-  /* USER CODE BEGIN vRoverTask */
-  RoverCommand cmd;
-  /* Infinite loop */
-  for (;;) {
-    xSemaphoreTake(commandMutexHandle, portMAX_DELAY);
-    cmd = command;
-    command = ROVER_DO_NOTHING;
-    xSemaphoreGive(commandMutexHandle);
-    if (cmd != ROVER_DO_NOTHING) {
-      switch (cmd) {
-      case ROVER_FORWARD:
-        UART_Log("Forward!\n");
-        Set_GPIO_Tmp(Rover_Forward_GPIO_Port, Rover_Forward_Pin, 500); // Go forward for 500ms
-        break;
-      case ROVER_BACKWARD:
-        UART_Log("Backward!\n");
-        Set_GPIO_Tmp(Rover_Backward_GPIO_Port, Rover_Backward_Pin, 500); // Go backward for 500ms
-        break;
-      case ROVER_RIGHT:
-        UART_Log("Right!\n");
-        Set_GPIO_Tmp(Rover_Right_GPIO_Port, Rover_Right_Pin, 200); // Turn right 90deg
-        break;
-      case ROVER_LEFT:
-        UART_Log("Left!\n");
-        Set_GPIO_Tmp(Rover_Left_GPIO_Port, Rover_Left_Pin, 200); // Turn left 90deg
-      case ROVER_SPIN:
-        UART_Log("Spin!\n");
-        Set_GPIO_Tmp(Rover_Right_GPIO_Port, Rover_Right_Pin, 850); // Do a 360deg spin
-        break;
-      case ROVER_OPEN:
-        UART_Log("Open lid!\n");
-        Set_GPIO_Tmp(Rover_Open_GPIO_Port, Rover_Open_Pin, 1500); // Open lid
-        break;
-      case ROVER_CLOSE:
-        UART_Log("Close lid!\n");
-        Set_GPIO_Tmp(Rover_Close_GPIO_Port, Rover_Close_Pin, 1500); // Close lid
-        break;
-      case ROVER_SPEAK:
-        // TODO
-        break;
-      }
+/* USER CODE BEGIN vRoverTask */
+RoverCommand cmd;
+/* Infinite loop */
+for (;;) {
+  xSemaphoreTake(commandMutexHandle, portMAX_DELAY);
+  cmd = command;
+  command = ROVER_DO_NOTHING;
+  xSemaphoreGive(commandMutexHandle);
+  if (cmd != ROVER_DO_NOTHING) {
+    switch (cmd) {
+    case ROVER_FORWARD:
+      UART_Log("Forward!\n");
+      Set_GPIO_Tmp(Rover_Forward_GPIO_Port, Rover_Forward_Pin, 500); // Go forward for 500ms
+      break;
+    case ROVER_BACKWARD:
+      UART_Log("Backward!\n");
+      Set_GPIO_Tmp(Rover_Backward_GPIO_Port, Rover_Backward_Pin, 500); // Go backward for 500ms
+      break;
+    case ROVER_RIGHT:
+      UART_Log("Right!\n");
+      Set_GPIO_Tmp(Rover_Right_GPIO_Port, Rover_Right_Pin, 200); // Turn right 90deg
+      break;
+    case ROVER_LEFT:
+      UART_Log("Left!\n");
+      Set_GPIO_Tmp(Rover_Left_GPIO_Port, Rover_Left_Pin, 200); // Turn left 90deg
+      break;
+    case ROVER_SPIN:
+      UART_Log("Spin!\n");
+      Set_GPIO_Tmp(Rover_Right_GPIO_Port, Rover_Right_Pin, 850); // Do a 360deg spin
+      break;
+    case ROVER_OPEN:
+      UART_Log("Open lid!\n");
+      Set_GPIO_Tmp(Rover_Open_GPIO_Port, Rover_Open_Pin, 1500); // Open lid
+      break;
+    case ROVER_CLOSE:
+      UART_Log("Close lid!\n");
+      Set_GPIO_Tmp(Rover_Close_GPIO_Port, Rover_Close_Pin, 1500); // Close lid
+      break;
+    case ROVER_SPEAK:
+      // TODO
+      break;
     }
-    osDelay(1);
   }
-  /* USER CODE END vRoverTask */
+  osDelay(1);
+}
+/* USER CODE END vRoverTask */
 }
 
 /**
@@ -810,15 +817,15 @@ void vRoverTask(void const *argument) {
  * @retval None
  */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-  /* USER CODE BEGIN Callback 0 */
+/* USER CODE BEGIN Callback 0 */
 
-  /* USER CODE END Callback 0 */
-  if (htim->Instance == TIM1) {
-    HAL_IncTick();
-  }
-  /* USER CODE BEGIN Callback 1 */
+/* USER CODE END Callback 0 */
+if (htim->Instance == TIM1) {
+  HAL_IncTick();
+}
+/* USER CODE BEGIN Callback 1 */
 
-  /* USER CODE END Callback 1 */
+/* USER CODE END Callback 1 */
 }
 
 /**
@@ -826,12 +833,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
  * @retval None
  */
 void Error_Handler(void) {
-  /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1) {
-  }
-  /* USER CODE END Error_Handler_Debug */
+/* USER CODE BEGIN Error_Handler_Debug */
+/* User can add his own implementation to report the HAL error return state */
+__disable_irq();
+while (1) {
+}
+/* USER CODE END Error_Handler_Debug */
 }
 
 #ifdef  USE_FULL_ASSERT
