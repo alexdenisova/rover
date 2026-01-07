@@ -15,6 +15,8 @@ The user says one of the commands, which is recorded by the MAX9814 microphone e
 
 In the demonstration, I give the command "Forward". The rover takes several seconds to react, as the speech-to-text model is rather slow at transcribing.
 
+https://github.com/user-attachments/assets/662a4837-75a4-4f81-b607-461e728f610d
+
 ## Photos
 
 <p float="left">
